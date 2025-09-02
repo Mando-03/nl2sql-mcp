@@ -240,9 +240,8 @@ class QuerySchemaResultBuilder:
                         if ltok & admin_tokens or rtok & admin_tokens:
                             pen -= 0.5
                         # Penalize common admin bridge patterns: admin column -> identity reference
-                        if (
-                            (ltok & admin_tokens and (rtok & identity_tokens))
-                            or (rtok & admin_tokens and (ltok & identity_tokens))
+                        if (ltok & admin_tokens and (rtok & identity_tokens)) or (
+                            rtok & admin_tokens and (ltok & identity_tokens)
                         ):
                             pen -= 0.4
                         # Small preference for clean ID joins

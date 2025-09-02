@@ -48,6 +48,7 @@ class SchemaServiceManager:
         self._schema_service: SchemaService | None = None
         self._initialization_lock = asyncio.Lock()
         self._logger = get_logger(__name__)
+        self._sa_dialect_name: str | None = None
 
         # Background thread and state
         self._thread_lock = threading.Lock()
@@ -254,6 +255,11 @@ class SchemaServiceManager:
         """Return a snapshot of the initialization state."""
         return self._state
 
+    # Public helper for consumers that need the active SQLAlchemy dialect name
+    def current_sqlalchemy_dialect_name(self) -> str | None:
+        """Return the current SQLAlchemy dialect name if initialized."""
+        return self._sa_dialect_name
+
     # ---- internal ------------------------------------------------------------
 
     def _initialize_sync(self) -> None:
@@ -267,6 +273,11 @@ class SchemaServiceManager:
 
         # Create database engine
         engine = ConfigService.create_database_engine(database_url)
+        # Record dialect name for external consumers
+        try:
+            self._sa_dialect_name = engine.dialect.name  # e.g., 'postgresql'
+        except Exception:  # noqa: BLE001 - defensive
+            self._sa_dialect_name = None
 
         # Test database connectivity
         self._logger.debug("Testing database connectivity…")

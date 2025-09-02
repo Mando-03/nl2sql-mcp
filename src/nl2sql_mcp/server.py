@@ -23,6 +23,11 @@ from nl2sql_mcp.models import (
     TableSearchHit,
 )
 from nl2sql_mcp.services.schema_service_manager import SchemaServiceManager
+from nl2sql_mcp.sqlglot_tools import (
+    SqlglotService,
+    map_sqlalchemy_to_sqlglot,
+    register_sqlglot_tools,
+)
 
 # Load environment variables
 dotenv.load_dotenv()
@@ -58,6 +63,28 @@ mcp = FastMCP(
     ),
     lifespan=lifespan,
 )
+
+# -- SQLGlot Tools Registration ---------------------------------------------
+
+_sqlglot_service = SqlglotService()
+
+
+def _active_sqlglot_dialect() -> str:
+    """Resolve the current database dialect for sqlglot tools.
+
+    Attempts to obtain the SQLAlchemy engine from the SchemaServiceManager and
+    map its dialect to a sqlglot dialect. Falls back to generic "sql" when the
+    schema service is not yet READY.
+    """
+    manager = SchemaServiceManager.get_instance()
+    sa_name = manager.current_sqlalchemy_dialect_name()
+    if sa_name:
+        return map_sqlalchemy_to_sqlglot(sa_name)
+    return "sql"
+
+
+# Attach sqlglot MCP helpers to the main server instance
+register_sqlglot_tools(mcp, _sqlglot_service, _active_sqlglot_dialect)  # type: ignore[arg-type]
 
 
 @mcp.tool
