@@ -1,0 +1,29 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Claude
+.claude/
+.mcp.json
+
+# Virtual environments
+.venv/
+
+# Caches
+.ruff_cache/
+.cache
+.pytest_cache/
+data/
+# Explicitly ignore embedded vector store artifacts (safety/documentation)
+data/chroma/
+
+# Mac
+.DS_Store
+
+# Environment Variables
+.env
+.env.local

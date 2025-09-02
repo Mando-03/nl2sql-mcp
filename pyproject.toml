@@ -1,0 +1,224 @@
+[project]
+name = "nl2sql-mcp"
+version = "0.1.0"
+description = "A natural language to SQL Model Context Protocol server"
+readme = "README.md"
+authors = [
+    { name = "Jonathan Bradshaw", email = "jonathan.bradshaw@3cloudsolutions.com" },
+]
+maintainers = [
+    { name = "Jonathan Bradshaw", email = "jonathan.bradshaw@3cloudsolutions.com" },
+]
+requires-python = ">=3.13"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+keywords = ["mcp", "sql", "natural-language", "ai"]
+dependencies = [
+    "fastmcp>=2.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "sqlalchemy[asyncio]>=2.0.0",
+    "pyodbc>=5.0.0",                # Database support
+    "pandas>=2.3.2",
+    "networkx>=3.5",
+    "sentence-transformers>=5.1.0",
+    "annoy>=1.17.0",
+    "numpy>=2.3.2",
+    "pip>=25.2",
+    "aiojobs>=1.4.0",
+]
+
+[project.scripts]
+nl2sql-mcp = "nl2sql_mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/jb3cloud/nl2sql-mcp"
+Repository = "https://github.com/jb3cloud/nl2sql-mcp"
+Documentation = "https://github.com/jb3cloud/nl2sql-mcp#readme"
+Issues = "https://github.com/jb3cloud/nl2sql-mcp/issues"
+Changelog = "https://github.com/jb3cloud/nl2sql-mcp/blob/main/CHANGELOG.md"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 99
+output-format = "grouped"
+
+[tool.ruff.lint]
+per-file-ignores = { "scripts/*.py" = [
+    "T201",   # print found in local scripts
+    "TRY003", # long messages in exceptions (script-only)
+    "EM101",  # exception message literal (script-only)
+    "FBT001", # boolean positional args (script-only)
+    "FBT002", # boolean default positional arg (script-only)
+    "PLR2004",# magic values (script-only)
+    "BLE001", # broad except in scripts
+    "E501",   # line length in scripts
+    "PLR0912",# too many branches (script-only)
+    "PLR0915",# too many statements (script-only)
+    "PT028",  # test function default arg (script-only)
+], "examples/**/*.py" = [
+    "T201", # Print found (allowed in examples)
+], "tests/**/*.py" = [
+    "S101",    # Use of `assert` detected
+    "PLR2004", # Magic value used in comparison
+    "ANN001",  # Missing type annotation for function argument
+    "ANN201",  # Missing return type annotation for public function
+    "SLF001",  # Private method access
+] }
+
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "YTT",   # flake8-2020
+    "ANN",   # flake8-annotations
+    "ASYNC", # flake8-async
+    "S",     # flake8-bandit
+    "BLE",   # flake8-blind-except
+    "FBT",   # flake8-boolean-trap
+    "B",     # flake8-bugbear
+    "A",     # flake8-builtins
+    "COM",   # flake8-commas
+    "C4",    # flake8-comprehensions
+    "DTZ",   # flake8-datetimez
+    "T10",   # flake8-debugger
+    "DJ",    # flake8-django
+    "EM",    # flake8-errmsg
+    "EXE",   # flake8-executable
+    "FA",    # flake8-future-annotations
+    "ISC",   # flake8-implicit-str-concat
+    "ICN",   # flake8-import-conventions
+    "LOG",   # flake8-logging
+    "G",     # flake8-logging-format
+    "INP",   # flake8-no-pep420
+    "PIE",   # flake8-pie
+    "T20",   # flake8-print
+    "PYI",   # flake8-pyi
+    "PT",    # flake8-pytest-style
+    "Q",     # flake8-quotes
+    "RSE",   # flake8-raise
+    "RET",   # flake8-return
+    "SLF",   # flake8-self
+    "SLOT",  # flake8-slots
+    "SIM",   # flake8-simplify
+    "TID",   # flake8-tidy-imports
+    "INT",   # flake8-gettext
+    "ARG",   # flake8-unused-arguments
+    "PTH",   # flake8-use-pathlib
+    "TD",    # flake8-todos
+    "FIX",   # flake8-fixme
+    "ERA",   # eradicate
+    "PD",    # pandas-vet
+    "PGH",   # pygrep-hooks
+    "PL",    # pylint
+    "TRY",   # tryceratops
+    "FLY",   # flynt
+    "NPY",   # numpy
+    "PERF",  # perflint
+    "FURB",  # refurb
+    "RUF",   # ruff-specific
+]
+ignore = [
+    "ANN401", # Dynamically typed expressions (typing.Any)
+    "COM812", # Trailing comma missing (conflicts with formatter)
+    "ISC001", # Implicitly concatenated string literals (conflicts with formatter)
+    "TD002",  # Missing author in TODO
+    "TD003",  # Missing issue link on line following TODO
+    "FIX002", # Line contains TODO
+    "TRY300", # try-consider-else
+    "TRY301", # Abstract `raise` to an inner function
+    "PLR0915", # too-many-statements (allow small robust helpers)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nl2sql_mcp"]
+force-sort-within-sections = true
+
+[tool.ruff.lint.flake8-annotations]
+allow-star-arg-any = true
+ignore-fully-untyped = true
+
+[tool.ruff.lint.pylint]
+max-args = 6
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.basedpyright]
+pythonVersion = "3.13"
+pythonPlatform = "All"
+typeCheckingMode = "strict"
+exclude = ["**/__pycache__", "**/.pytest_cache", "**/.*"]
+include = ["src/**/*.py", "tests/**/*.py"]
+reportMissingImports = true
+reportMissingTypeStubs = false
+reportImportCycles = true
+reportUnusedImport = true
+reportUnusedClass = true
+reportUnusedFunction = true
+reportUnusedVariable = true
+reportDuplicateImport = true
+reportUntypedFunctionDecorator = true
+reportUntypedClassDecorator = true
+reportUntypedBaseClass = true
+reportUntypedNamedTuple = true
+reportPrivateUsage = true
+reportConstantRedefinition = true
+reportIncompatibleMethodOverride = true
+reportIncompatibleVariableOverride = true
+reportInconsistentConstructor = true
+reportOverlappingOverload = true
+reportMissingSuperCall = false
+reportUninitializedInstanceVariable = true
+reportInvalidStringEscapeSequence = true
+reportUnknownParameterType = true
+reportUnknownArgumentType = true
+reportUnknownLambdaType = true
+reportUnknownVariableType = true
+reportUnknownMemberType = false
+reportMissingParameterType = true
+reportMissingTypeArgument = true
+reportInvalidTypeVarUse = true
+reportCallInDefaultInitializer = true
+reportUnnecessaryIsInstance = true
+reportUnnecessaryCast = true
+reportUnnecessaryComparison = true
+reportUnnecessaryContains = true
+reportAssertAlwaysTrue = true
+reportSelfClsParameterName = true
+reportImplicitStringConcatenation = false
+reportInvalidStubStatement = true
+reportIncompleteStub = true
+reportUnsupportedDunderAll = true
+reportUnusedCallResult = false
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = ["--strict-markers", "--strict-config"]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+filterwarnings = ["error", "ignore::UserWarning", "ignore::DeprecationWarning"]
+
+[dependency-groups]
+dev = ["basedpyright>=1.31.3", "pytest>=8.4.1", "ruff>=0.12.11"]
