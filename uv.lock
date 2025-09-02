@@ -616,6 +616,7 @@ dependencies = [
     { name = "pyodbc" },
     { name = "sentence-transformers" },
     { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "sqlglot" },
 ]
 
 [package.dev-dependencies]
@@ -639,6 +640,7 @@ requires-dist = [
     { name = "pyodbc", specifier = ">=5.0.0" },
     { name = "sentence-transformers", specifier = ">=5.1.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.0" },
+    { name = "sqlglot", specifier = ">=25.7.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -1570,6 +1572,15 @@ wheels = [
 [package.optional-dependencies]
 asyncio = [
     { name = "greenlet" },
+]
+
+[[package]]
+name = "sqlglot"
+version = "27.10.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c9/63/49797c32bac570ed3b06c5b6b7a8361d432cd43340ccadcce8162be21bb9/sqlglot-27.10.0.tar.gz", hash = "sha256:77af99ca743b44e9469a6ded954fe9111ff5449166cc09df452b6fd0ed01fb6d", size = 5437988, upload-time = "2025-08-28T21:08:16.115Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/67/8c/a7547d8cb904d9ab0478912ed2ce2444d0fe955403db2d54cf5de076f1c9/sqlglot-27.10.0-py3-none-any.whl", hash = "sha256:3981cf61d57cbab6da254283b272387c2dc1f239ec8fe8d637b3b67f3bf5cead", size = 506563, upload-time = "2025-08-28T21:08:13.424Z" },
 ]
 
 [[package]]
