@@ -37,6 +37,7 @@
 
 ## Architecture Notes
 - Entry point `nl2sql_mcp.server:main` exposes a FastMCP server with tools for schema discovery and query planning. Intelligence components live under `src/nl2sql_mcp/intelligence` and are exercised by the harness script.
+- **Never** hard code any schema-specific logic or hardcoded values in the codebase. This MCP should be designed to be flexible and adaptable to different schemas and environments.
 
 ## Documentation
 - FastMCP documentation: [gofastmcp.com](https://gofastmcp.com/llms.txt)
