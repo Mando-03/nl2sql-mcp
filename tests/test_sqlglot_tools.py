@@ -7,6 +7,7 @@ from nl2sql_mcp.sqlglot_tools import (
     map_sqlalchemy_to_sqlglot,
 )
 from nl2sql_mcp.sqlglot_tools.models import (
+    SqlAutoTranspileRequest,
     SqlErrorAssistRequest,
     SqlMetadataRequest,
     SqlOptimizeRequest,
@@ -64,3 +65,16 @@ def test_error_assist_syntax_hint() -> None:
         )
     )
     assert any("replace" in s.lower() for s in out.suggested_fixes)
+
+
+def test_detect_and_auto_transpile() -> None:
+    svc = SqlglotService()
+    # Use a clearly T-SQL flavored query but target postgres
+    res = svc.auto_transpile_for_database(
+        SqlAutoTranspileRequest(
+            sql="SELECT TOP 2 name FROM dbo.Users ORDER BY name",
+            target_dialect="postgres",
+        )
+    )
+    assert res.detected_source in {"tsql", "sql"}
+    assert "limit" in res.sql.lower()

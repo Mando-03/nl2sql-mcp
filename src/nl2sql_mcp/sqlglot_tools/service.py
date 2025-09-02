@@ -10,10 +10,13 @@ from functools import lru_cache
 import logging
 
 import sqlglot
+from sqlglot.errors import ParseError
 from sqlglot import expressions as sgl_exp
 
 from .models import (
     Dialect,
+    SqlAutoTranspileRequest,
+    SqlAutoTranspileResult,
     SqlErrorAssistRequest,
     SqlErrorAssistResult,
     SqlMetadataRequest,
@@ -294,4 +297,141 @@ class SqlglotService:
             likely_causes=sorted(set(likely)),
             suggested_fixes=sorted(set(fixes)),
             target_dialect=req.dialect,
+        )
+
+    # ---- dialect detection & auto-transpile -----------------------------
+    def _heuristic_dialect_cues(self, sql: str) -> dict[Dialect, int]:
+        """Lightweight token heuristics for dialect identification.
+
+        Returns a score bump per dialect. Keep intentionally simple and explainable.
+        """
+        s = sql.lower()
+        scores: dict[Dialect, int] = dict.fromkeys(
+            (
+                "postgres",
+                "mysql",
+                "sqlite",
+                "tsql",
+                "oracle",
+                "snowflake",
+                "bigquery",
+                "sql",
+            ),
+            0,
+        )
+
+        # T-SQL cues
+        if "select top " in s or " top " in s:
+            scores["tsql"] += 3
+        if " nvarchar" in s or " varchar(max)" in s or " newid()" in s:
+            scores["tsql"] += 2
+        if " isnull(" in s:
+            scores["tsql"] += 1
+
+        # PostgreSQL cues
+        if " ilike " in s or "::" in s:
+            scores["postgres"] += 2
+        if " string_agg(" in s or " generate_series(" in s:
+            scores["postgres"] += 2
+
+        # MySQL/SQLite cues
+        if "`" in sql:
+            scores["mysql"] += 2
+            scores["bigquery"] += 1
+            scores["sqlite"] += 1
+        if " group_concat(" in s:
+            scores["mysql"] += 2
+            scores["sqlite"] += 2
+
+        # Oracle cues
+        if " nvl(" in s or " decode(" in s:
+            scores["oracle"] += 3
+        if " to_date(" in s or " systimestamp" in s or " sysdate" in s:
+            scores["oracle"] += 2
+
+        # Snowflake cues
+        if " regexp_substr(" in s or " qualify " in s or " split_part(" in s:
+            scores["snowflake"] += 2
+        if "::" in s and " ilike " in s:
+            scores["snowflake"] += 1
+
+        # BigQuery cues
+        if ".`" in sql or "`project." in s or "safe_cast(" in s or "unnest(" in s:
+            scores["bigquery"] += 2
+
+        return scores
+
+    def detect_dialect(self, sql: str) -> tuple[Dialect, float, list[str]]:
+        """Attempt to detect the SQL dialect using parse attempts + heuristics."""
+        candidates: list[Dialect] = [
+            "postgres",
+            "mysql",
+            "sqlite",
+            "tsql",
+            "oracle",
+            "snowflake",
+            "bigquery",
+        ]
+
+        heur = self._heuristic_dialect_cues(sql)
+        notes: list[str] = []
+        best: tuple[Dialect, int] | None = None
+
+        for d in candidates:
+            score = heur.get(d, 0)
+            try:
+                parsed = sqlglot.parse_one(sql, dialect=d)
+                score += 2  # successful parse bonus
+                out = parsed.sql(dialect=d, pretty=False)
+                if out and out.lower() == sql.strip().lower():
+                    score += 1
+            except (ParseError, ValueError, TypeError) as e:
+                self._logger.debug("dialect parse failed for %s: %s", d, e)
+            if best is None or score > best[1]:
+                best = (d, score)
+
+        detected: Dialect = best[0] if best else "sql"
+        conf_threshold = 3
+        conf = 0.6 if best and best[1] >= conf_threshold else 0.3
+
+        for d, sc in heur.items():
+            if sc > 0:
+                notes.append(f"{d}: +{sc} from tokens")
+        if best:
+            parse_bonus = best[1] - heur.get(best[0], 0)
+            notes.append(f"{best[0]}: +{parse_bonus} from parsing")
+
+        return detected, conf, notes
+
+    def auto_transpile_for_database(self, req: SqlAutoTranspileRequest) -> SqlAutoTranspileResult:
+        """Detect source dialect; transpile to target when different."""
+        detected, conf, notes = self.detect_dialect(req.sql)
+        if detected in {req.target_dialect, "sql"}:
+            try:
+                parsed = sqlglot.parse_one(req.sql, dialect=req.target_dialect)
+                normalized = parsed.sql(dialect=req.target_dialect, pretty=True)
+            except (ParseError, ValueError, TypeError):
+                normalized = req.sql
+            return SqlAutoTranspileResult(
+                detected_source=detected,
+                confidence=conf,
+                sql=normalized,
+                notes=notes,
+                target_dialect=req.target_dialect,
+            )
+
+        t = self.transpile(
+            SqlTranspileRequest(
+                sql=req.sql,
+                source_dialect=detected,
+                target_dialect=req.target_dialect,
+                pretty=True,
+            )
+        )
+        return SqlAutoTranspileResult(
+            detected_source=detected,
+            confidence=conf,
+            sql=t.sql,
+            notes=notes + (t.warnings or []),
+            target_dialect=req.target_dialect,
         )

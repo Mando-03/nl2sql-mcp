@@ -59,6 +59,23 @@ class SqlTranspileResult(BaseModel):
     target_dialect: Dialect = Field(description="Dialect used for output")
 
 
+class SqlAutoTranspileRequest(BaseModel):
+    """Request to auto-detect source dialect and transpile to target."""
+
+    sql: str = Field(description="SQL to analyze and possibly transpile")
+    target_dialect: Dialect = Field(description="Target database dialect")
+
+
+class SqlAutoTranspileResult(BaseModel):
+    """Auto-transpile outcome with detection confidence and notes."""
+
+    detected_source: Dialect = Field(description="Detected source dialect")
+    confidence: float = Field(ge=0.0, le=1.0, description="Detection confidence 0..1")
+    sql: str = Field(description="Result SQL (transpiled if needed)")
+    notes: list[str] = Field(default_factory=list, description="Reasoning cues used for detection")
+    target_dialect: Dialect = Field(description="Dialect used for output")
+
+
 class SqlOptimizeRequest(BaseModel):
     """Request to apply sqlglot optimizations for a dialect."""
 

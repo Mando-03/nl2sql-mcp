@@ -13,6 +13,8 @@ from fastmcp import Context, FastMCP
 
 from .models import (
     Dialect,
+    SqlAutoTranspileRequest,
+    SqlAutoTranspileResult,
     SqlErrorAssistRequest,
     SqlErrorAssistResult,
     SqlMetadataRequest,
@@ -102,3 +104,10 @@ def register_sqlglot_tools(
         sql_extract_metadata,
         sql_assist_from_error,
     )
+
+    @mcp.tool
+    async def sql_auto_transpile_for_database(_ctx: Context, sql: str) -> SqlAutoTranspileResult:  # pyright: ignore[reportUnusedFunction]
+        """Auto-detect source dialect and transpile to the active database dialect."""
+        dialect = dialect_provider()
+        req = SqlAutoTranspileRequest(sql=sql, target_dialect=dialect)
+        return service.auto_transpile_for_database(req)
