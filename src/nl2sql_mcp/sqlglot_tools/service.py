@@ -137,7 +137,10 @@ class SqlglotService:
 
             if req.schema_map:
                 # Lazy import to avoid type-checker partial stubs at module import time
-                from sqlglot.optimizer import optimize as sgl_optimize  # pyright: ignore[reportUnknownVariableType]
+                from sqlglot.optimizer import (  # noqa: PLC0415
+                    optimize as sgl_optimize,  # pyright: ignore[reportUnknownVariableType]
+                )
+
                 optimized = sgl_optimize(parsed, schema=req.schema_map)
                 applied.append("schema-aware-optimizer")
                 return SqlOptimizeResult(
@@ -184,12 +187,16 @@ class SqlglotService:
             tables = [t.name for t in parsed.find_all(sgl_exp.Table) if t.name]
             columns = [c.name for c in parsed.find_all(sgl_exp.Column) if c.name]
             for f in parsed.find_all(sgl_exp.Func):
-                name = getattr(f, "name", None)
-                if isinstance(name, str) and name:
-                    functions.append(name)
+                # Prefer declared function name when available; otherwise use class name
+                raw_name = getattr(f, "name", None)
+                name = raw_name if isinstance(raw_name, str) and raw_name else type(f).__name__
+                functions.append(name)
 
+            # Robust aggregation detection: check for known aggregate names or GROUP BY clause
             agg_funcs: set[str] = {"COUNT", "SUM", "AVG", "MIN", "MAX", "GROUP_CONCAT"}
-            has_aggs = any(fn.upper() in agg_funcs for fn in functions)
+            has_agg_funcs = any(fn.upper() in agg_funcs for fn in functions)
+            has_group_by = bool(parsed.args.get("group"))
+            has_aggs = has_agg_funcs or has_group_by
 
             return SqlMetadataResult(
                 query_type=type(parsed).__name__,
