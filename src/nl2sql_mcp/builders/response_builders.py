@@ -67,22 +67,29 @@ class QuerySchemaResultBuilder:
             msg = "Schema card not available"
             raise RuntimeError(msg)
 
-        # Build table summaries and key columns (detail controls normalized)
+        # Normalize detail controls
         samples = include_samples and detail_level != "minimal"
         columns_cap = 6 if detail_level == "minimal" else max_columns_per_table
         joins_cap = 3 if detail_level == "minimal" else join_limit
 
+        # Build suggested approach first to determine main table and dims
+        suggested_approach, main_table, dims_sorted = (
+            QuerySchemaResultBuilder._build_suggested_approach(query, selected_tables, explorer)
+        )
+
+        # Ensure connectivity: add one-hop bridges between main_table and other selections
+        if main_table:
+            selected_tables = QuerySchemaResultBuilder._augment_with_bridges(
+                selected_tables, explorer, main_table
+            )
+
+        # Build table summaries and key columns using possibly augmented set
         relevant_tables, key_columns = QuerySchemaResultBuilder._build_table_summaries(
             selected_tables,
             explorer,
             include_samples=samples,
             max_sample_values=max_sample_values,
             max_columns_per_table=columns_cap,
-        )
-
-        # Build suggested approach first to determine main table and dims
-        suggested_approach, main_table, dims_sorted = (
-            QuerySchemaResultBuilder._build_suggested_approach(query, selected_tables, explorer)
         )
 
         # Build JOIN examples with anchoring to main table and query tokens
@@ -119,6 +126,156 @@ class QuerySchemaResultBuilder:
             filter_candidates=filter_candidates,
             selected_columns=selected_columns,
         )
+
+    @staticmethod
+    def _augment_with_bridges(
+        selected_tables: list[str], explorer: SchemaExplorer, main_table: str
+    ) -> list[str]:
+        """Add one-hop bridge tables to ensure joinability from main_table.
+
+        For any selected table not directly connected to the main_table,
+        if there exists an intermediate table X such that main_table—X and X—T
+        are edges, include X in the selection. Keeps original order, de-duplicates.
+        """
+        if not explorer.card:
+            msg = "Schema card not available"
+            raise RuntimeError(msg)
+        if main_table not in explorer.card.tables:
+            return selected_tables
+
+        # Build undirected adjacency and fk map for quick neighbor checks
+        adj: dict[str, set[str]] = {}
+        edge_fk: dict[frozenset[str], list[str]] = {}
+        for a, b, fk in explorer.card.edges:
+            adj.setdefault(a, set()).add(b)
+            adj.setdefault(b, set()).add(a)
+            edge_fk.setdefault(frozenset({a, b}), []).append(fk)
+
+        out: list[str] = []
+        seen: set[str] = set()
+
+        def add(t: str) -> None:
+            if t not in seen:
+                out.append(t)
+                seen.add(t)
+
+        # Always keep the original order
+        for t in list(selected_tables):
+            add(t)
+            if t == main_table:
+                continue
+            # If already directly connected, nothing to do
+            if t in adj.get(main_table, set()):
+                continue
+            # Try one-hop bridge with scoring
+            bridge_candidates = adj.get(main_table, set())
+            best_x: str | None = None
+            best_score = float("-inf")
+            found_bridge = False
+
+            def _score_bridge(x: str, dest: str) -> float:
+                score = 0.0
+                card = explorer.card
+                if card is None:
+                    msg_local = "Schema card not available"
+                    raise RuntimeError(msg_local)
+                tp_x = card.tables.get(x)
+                tp_main = card.tables.get(main_table)
+                tp_t = card.tables.get(dest)
+                # Avoid audit-like bridges
+                if tp_x and tp_x.is_audit_like:
+                    score -= 0.6
+                # Subject area consistency
+                if tp_x and tp_main and tp_x.subject_area == tp_main.subject_area:
+                    score += 0.2
+                if tp_x and tp_t and tp_x.subject_area == tp_t.subject_area:
+                    score += 0.2
+
+                # Inspect FK columns for admin patterns vs business keys (generic, DB-agnostic)
+                admin_tokens = {
+                    "last",
+                    "edited",
+                    "edit",
+                    "lastedited",
+                    "lasteditedby",
+                    "created",
+                    "create",
+                    "createdby",
+                    "modified",
+                    "modify",
+                    "modifiedby",
+                    "update",
+                    "updated",
+                    "updatedby",
+                    "change",
+                    "changed",
+                }
+                identity_tokens = {
+                    "user",
+                    "users",
+                    "person",
+                    "people",
+                    "employee",
+                    "employees",
+                    "staff",
+                    "account",
+                    "accounts",
+                    "login",
+                    "logon",
+                    "owner",
+                    "ownerid",
+                }
+
+                def _edge_penalty(u: str, v: str) -> float:
+                    fks = edge_fk.get(frozenset({u, v}), [])
+                    pen = 0.0
+                    for fkdesc in fks:
+                        if "->" not in fkdesc:
+                            continue
+                        left, right = fkdesc.split("->", 1)
+                        lcol = left.split(".")[-1]
+                        rcol = right.split(".")[-1]
+                        ltok = set(tokens_from_text(lcol))
+                        rtok = set(tokens_from_text(rcol))
+                        if ltok & admin_tokens or rtok & admin_tokens:
+                            pen -= 0.5
+                        # Penalize common admin bridge patterns: admin column -> identity reference
+                        if (
+                            (ltok & admin_tokens and (rtok & identity_tokens))
+                            or (rtok & admin_tokens and (ltok & identity_tokens))
+                        ):
+                            pen -= 0.4
+                        # Small preference for clean ID joins
+                        has_left_id = "id" in ltok and not (ltok & admin_tokens)
+                        has_right_id = "id" in rtok and not (rtok & admin_tokens)
+                        if has_left_id or has_right_id:
+                            pen += 0.1
+                    # Penalize if bridge table name looks like a generic identity table
+                    name_toks = set(tokens_from_text(x))
+                    if name_toks & identity_tokens:
+                        pen -= 0.2
+                    return pen
+
+                score += _edge_penalty(main_table, x)
+                score += _edge_penalty(x, dest)
+                return score
+
+            for x in bridge_candidates:
+                if t in adj.get(x, set()) and x in explorer.card.tables:
+                    s = _score_bridge(x, t)
+                    if s > best_score:
+                        best_score = s
+                        best_x = x
+
+            if best_x is not None:
+                add(best_x)
+                # found_bridge kept for clarity; no further use here
+                found_bridge = True
+            if not found_bridge:
+                # leave as-is; could be two+ hops (not handled here)
+                pass
+
+        return out
 
     @staticmethod
     def _build_table_summaries(
@@ -333,15 +490,15 @@ class QuerySchemaResultBuilder:
         """Build a more actionable suggested approach text.
 
         Heuristic: pick a likely fact table (metrics+dates preferred), then
-        suggest joining common dimensions (product, customer, date) and outline
-        GROUP BY/ORDER BY steps.
+        suggest joining key dimensions (entities, categories, dates) and outline
+        GROUP BY/ORDER BY steps. Avoids any schema-specific keywords.
         """
         main = selected_tables[:]
         if not main:
             return (
                 (
                     f"Query: {query}\n1. Identify a fact-like table\n"
-                    "2. Join to key dimensions (product/date/customer)\n3. Aggregate and rank"
+                    "2. Join to key dimensions (entities/dates)\n3. Aggregate and rank"
                 ),
                 None,
                 [],
@@ -382,21 +539,20 @@ class QuerySchemaResultBuilder:
                 elif b == main_table and a in main:
                     dim_candidates.append(a)
 
-        # Rank dimensions by name cues and archetype
+        # Rank dimensions by archetype and column roles (DB-agnostic)
         def dim_score(tk: str) -> float:
             if not explorer.card or tk not in explorer.card.tables:
                 return 0.0
             tp = explorer.card.tables[tk]
-            tokens = set(tokens_from_text(tk))
             score = 0.0
             if (tp.archetype or "").lower() == "dimension":
                 score += 1.0
-            if {"stock", "item", "product"} & tokens:
-                score += 1.0
-            if {"customer", "invoice", "order"} & tokens:
-                score += 0.7
-            if {"date", "invoice", "order"} & tokens and tp.n_dates > 0:
-                score += 0.5
+            # Prefer dimensions rich in categorical attributes
+            cat_count = sum(1 for c in tp.columns if c.role == "category")
+            score += 0.15 * min(8, cat_count)
+            # Small bonus for having dates (slowly changing or dated dims)
+            if tp.n_dates > 0:
+                score += 0.3
             return score
 
         dims_sorted = sorted(set(dim_candidates), key=dim_score, reverse=True)[:3]

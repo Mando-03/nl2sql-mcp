@@ -72,7 +72,7 @@ class RetrievalEngine:
 
         # Tunable constants for token expansion and priors
         self._MORPH_MIN_LEN: int = 3
-        self._LEXICON_TOP_N: int = 12
+        self._LEXICON_TOP_N: int = 16
         self._LEXICON_MIN_DF: int = 2
 
         # No hardcoded synonyms or table hints. All expansion is schema-driven
@@ -182,7 +182,7 @@ class RetrievalEngine:
                 )
                 for token, sim in neighbors:
                     # scale by similarity; clamp to reasonable max
-                    q_weights[token] += float(max(0.0, min(0.6, 0.6 * sim)))
+                    q_weights[token] += float(max(0.0, min(0.7, 0.7 * sim)))
             except RuntimeError:
                 # Embeddings disabled at runtime: skip semantic expansion
                 pass
@@ -317,8 +317,24 @@ class RetrievalEngine:
         }
 
         # Optional bias: aggregation/ranking intent prefers tables with metrics/dates
-        query_tokens = set(tokens_from_text(query))
-        agg_signals = {"top", "rank", "ranked", "sum", "total", "sales", "revenue"}
+        # Use expanded token set for lexical overlap bonus to capture
+        # schema-learned synonyms (e.g., shipping -> delivery)
+        raw_tokens = list(tokens_from_text(query))
+        expanded_map = self._expand_tokens(raw_tokens, raw_query=query)
+        query_tokens = set(expanded_map.keys())
+        agg_signals = {
+            "top",
+            "rank",
+            "ranked",
+            "sum",
+            "total",
+            "count",
+            "avg",
+            "average",
+            "median",
+            "percent",
+            "percentage",
+        }
         has_agg_intent = bool(agg_signals & query_tokens)
 
         if has_agg_intent:
