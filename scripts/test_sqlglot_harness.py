@@ -41,6 +41,7 @@ from nl2sql_mcp.sqlglot_tools import (  # noqa: E402
 )
 from nl2sql_mcp.sqlglot_tools.models import (  # noqa: E402
     Dialect,
+    SqlAutoTranspileRequest,
     SqlErrorAssistRequest,
     SqlMetadataRequest,
     SqlOptimizeRequest,
@@ -129,6 +130,21 @@ def demonstrate_optimize(svc: SqlglotService, dialect: Dialect) -> None:
     print("  ", res_schema.sql)
 
 
+def demonstrate_auto_transpile(svc: SqlglotService, target: Dialect) -> None:
+    section("Auto-detect and transpile to active dialect")
+    if target == "tsql":
+        sample = "SELECT name FROM users ORDER BY name LIMIT 2"
+    else:
+        sample = "SELECT TOP 2 name FROM dbo.Users ORDER BY name"
+    auto = svc.auto_transpile_for_database(
+        SqlAutoTranspileRequest(sql=sample, target_dialect=target)
+    )
+    print("> detected:", auto.detected_source, f"confidence={auto.confidence:.2f}")
+    if auto.notes:
+        print("> notes:", "; ".join(auto.notes))
+    print(f"> result ({target}):", auto.sql)
+
+
 def demonstrate_metadata(svc: SqlglotService, dialect: Dialect) -> None:
     section("Extract query metadata")
     sql = (
@@ -204,6 +220,7 @@ def main() -> None:
     demonstrate_validate(svc, dialect)
     demonstrate_transpile(svc, dialect)
     demonstrate_optimize(svc, dialect)
+    demonstrate_auto_transpile(svc, dialect)
     demonstrate_metadata(svc, dialect)
     demonstrate_error_assist(svc, dialect)
 

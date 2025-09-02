@@ -10,8 +10,8 @@ from functools import lru_cache
 import logging
 
 import sqlglot
-from sqlglot.errors import ParseError
 from sqlglot import expressions as sgl_exp
+from sqlglot.errors import ParseError
 
 from .models import (
     Dialect,
