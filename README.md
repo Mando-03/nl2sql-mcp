@@ -1,179 +1,172 @@
-# nl2sql-mcp
+% NL2SQL MCP
 
-A natural language to SQL Model Context Protocol (MCP) server that enables AI assistants to understand database schemas and generate SQL queries from natural language descriptions.
+A natural‑language‑to‑SQL Model Context Protocol (MCP) server and focused agent that turns a user question into one safe, executable `SELECT` and returns concise, typed results. Built for type‑safety, testability, and cross‑database compatibility.
 
-## Overview
+- Server: FastMCP tools for schema discovery, SQL assistance, and query planning
+- Agent: `ask_database`—plans and executes exactly one `SELECT` with strong safeguards
+- Engines: Works with SQLAlchemy; validated/transpiled via `sqlglot`
 
-This MCP server provides tools for:
-- **Schema Discovery**: Automatically explore and understand database structures
-- **Query Planning**: Generate optimized SQL queries from natural language
-- **Flexible Database Support**: Works with various SQL databases through SQLAlchemy
-
-The server is designed to be schema-agnostic and adaptable to different database environments without hardcoded assumptions.
 
 ## Features
 
-- 🔍 **Intelligent Schema Analysis**: Discovers tables, columns, relationships, and constraints
-- 🗣️ **Natural Language Processing**: Converts plain English to SQL queries
-- 🎯 **Query Optimization**: Generates efficient, well-structured SQL
-- 🔌 **Database Agnostic**: Supports multiple SQL databases via SQLAlchemy
-- 🛡️ **Type Safety**: Built with strict type checking and validation
-- 📊 **Vector Similarity**: Uses embeddings for intelligent schema matching
+- **LLM‑ready schema intelligence:** Reflects your DB, profiles columns, builds FK graphs, discovers subject areas, and returns typed planning aids.
+- **Safe SQL agent:** Enforces `SELECT`‑only, normalizes dialect, validates with `sqlglot`, applies row and payload budgets.
+- **Typed MCP tools:** Analyze query schema, search tables/columns, extract constraints, and expose SQL helpers (validate/transpile/optimize/metadata).
+- **Configurable & testable:** Dependency‑injected services with Pydantic models; pure, side‑effect‑free core APIs.
 
-## Quick Start
-
-### Prerequisites
-
-- Python 3.13+
-- uv (recommended) or pip
-- Database drivers for your target database (e.g., pyodbc for SQL Server)
-
-### Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/jb3cloud/nl2sql-mcp.git
-cd nl2sql-mcp
-```
-
-2. Install dependencies:
-```bash
-uv sync
-```
-
-3. Set up environment variables:
-```bash
-cp .env.example .env
-# Edit .env with your database connection details
-export NL2SQL_MCP_DATABASE_URL="your_database_url_here"
-```
-
-### Running the Server
-
-```bash
-# Using the entry point
-uv run nl2sql-mcp
-
-# Or directly
-uv run python -m nl2sql_mcp.server
-```
-
-## Development
-
-### Setup
-
-```bash
-# Install development dependencies
-uv sync
-
-# Run formatting
-uv run ruff format .
-
-# Run linting
-uv run ruff check .
-
-# Type checking
-uv run basedpyright
-
-# Run tests
-uv run pytest -q
-```
-
-### Testing Intelligence Components
-
-Use the harness script to test the intelligence components:
-
-```bash
-uv run python scripts/test_intelligence_harness.py
-```
-
-### Project Structure
-
-- `src/nl2sql_mcp/`: Main package
-  - `server.py`: FastMCP server implementation
-  - `intelligence/`: AI/ML components for query generation
-  - `services/`: Database and schema services
-  - `builders/`: Query building utilities
-- `scripts/`: Development and testing utilities
-- `tests/`: Test suite (pytest)
-- `docs/`: Documentation
-- `examples/`: Usage examples and sample data
-
-## Configuration
-
-Set the following environment variable:
-
-- `NL2SQL_MCP_DATABASE_URL`: Your database connection string
-
-Examples:
-```bash
-# SQL Server
-NL2SQL_MCP_DATABASE_URL="mssql+pyodbc://user:pass@server/database?driver=ODBC+Driver+17+for+SQL+Server"
-
-# PostgreSQL
-NL2SQL_MCP_DATABASE_URL="postgresql://user:pass@localhost/database"
-
-# MySQL
-NL2SQL_MCP_DATABASE_URL="mysql+pymysql://user:pass@localhost/database"
-```
-
-## Usage with AI Assistants
-
-This MCP server integrates with AI assistants like Claude Desktop. Add it to your MCP configuration:
-
-```json
-{
-  "mcpServers": {
-    "nl2sql": {
-      "command": "uv",
-      "args": ["run", "nl2sql-mcp"],
-      "env": {
-        "NL2SQL_MCP_DATABASE_URL": "your_database_url"
-      }
-    }
-  }
-}
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes following the coding standards
-4. Run the quality checks (`ruff`, `basedpyright`, `pytest`)
-5. Commit your changes using Conventional Commits
-6. Push to your branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
-
-### Coding Standards
-
-- Python 3.13 with strict type checking
-- Follow PEP 8 with 99 character line limit
-- Use double quotes for strings
-- All public functions must have docstrings
-- No hardcoded schema-specific logic
-- Type hints are required
 
 ## Architecture
 
-The server uses FastMCP to expose tools for:
+The system separates expensive schema analysis from fast per‑query processing:
 
-1. **Schema Discovery**: Introspects database structure and relationships
-2. **Query Planning**: Converts natural language to optimized SQL
-3. **Semantic Matching**: Uses vector embeddings for intelligent schema mapping
+```mermaid
+graph TB
+  subgraph "Phase 1: Schema Analysis (Run Once)"
+    DB[(Database)] --> SE[SchemaExplorer]
+    SE --> SC[SchemaCard]
+    SC --> DISK[Serialized Schema Card]
+  end
 
-Intelligence components are modular and testable, following dependency injection patterns.
+  subgraph "Phase 2: Query Processing (Fast)"
+    DISK --> QE[QueryEngine]
+    NLQ[Natural Language] --> QE
+    QE --> MCP[MCP Tools]
+  end
 
-## License
+  MCP --> AGENT[ask_database]
+```
 
-This project is licensed under the terms specified in the `pyproject.toml` file.
+- Phase 1 builds a `SchemaCard` with subject areas, table/column profiles, constraints, and graph metrics.
+- Phase 2 answers queries using multi‑modal retrieval + FK‑graph expansion against the prebuilt card.
 
-## Support
 
-- Create an [issue](https://github.com/jb3cloud/nl2sql-mcp/issues) for bug reports or feature requests
-- Check the [documentation](https://github.com/jb3cloud/nl2sql-mcp#readme) for usage examples
-- Review the [changelog](https://github.com/jb3cloud/nl2sql-mcp/blob/main/CHANGELOG.md) for updates
+## Modules
 
----
+- `src/nl2sql_mcp/agent/` — ask_database agent and models (see module README)
+- `src/nl2sql_mcp/schema_tools/` — schema intelligence MCP tools (see module README)
+- `src/nl2sql_mcp/services/` — configuration, schema service, and lifecycle manager
+- `src/nl2sql_mcp/sqlglot_tools/` — SQL validation/transpile/metadata MCP tools
 
-Built with ❤️ using FastMCP and modern Python practices.
+For deeper detail, see:
+
+- `src/nl2sql_mcp/agent/README.md`
+- `src/nl2sql_mcp/schema_tools/README.md`
+- `src/nl2sql_mcp/services/README.md`
+- `src/nl2sql_mcp/sqlglot_tools/README.md`
+
+
+## MCP Tools Overview
+
+Schema tools (selected):
+- `analyze_query_schema(query, max_tables=5, ...)` → `QuerySchemaResult` with relevant tables, join plan, key columns, group/filter candidates.
+- `get_database_overview()` → `DatabaseOverview` with subject areas and summaries.
+- `get_table_info(table_key, include_samples=True, ...)` → `TableInfo` with columns, PK/FK, constraints, and samples.
+- `find_tables(query, limit=10, approach="combo", alpha=0.7)` → `TableSearchHit[]`.
+- `find_columns(keyword, limit=25, by_table=None)` → `ColumnSearchHit[]`.
+- `get_init_status()` → readiness/error details for the schema service.
+
+SQLGlot tools:
+- `sql_validate(sql)`
+- `sql_transpile_to_database(sql, source_dialect)`
+- `sql_auto_transpile_for_database(sql)`
+- `sql_optimize_for_database(sql, schema_map?)`
+- `sql_extract_metadata(sql)`
+- `sql_assist_from_error(sql, error_message)`
+
+
+## Agent: ask_database
+
+Focused agent that proposes exactly one `SELECT` and executes it safely.
+
+Flow:
+1. Schema focus with `SchemaService.analyze_query_schema()`
+2. Plan one `SELECT` (PydanticAI `Agent[AgentDeps, LlmSqlPlan]`)
+3. Safety guards (`SELECT`‑only, strip `;`)
+4. Dialect: `SqlglotService.auto_transpile_for_database()` and `validate()`
+5. Execute via SQLAlchemy with truncation budgets
+6. Return typed `AskDatabaseResult` with notes and next‑step hints
+
+Safeguards:
+- Only `SELECT` allowed; no mutations
+- Deterministic truncation by row count and per‑cell character limit
+- Payload size budgets to protect downstream consumers
+
+
+## Install
+
+Prerequisites:
+- Python 3.13
+- `uv` for environment management
+
+Setup:
+
+```bash
+uv sync
+```
+
+Key environment variables (via `.env`):
+- `NL2SQL_MCP_DATABASE_URL` (required)
+- Result budgets: `NL2SQL_MCP_ROW_LIMIT`, `NL2SQL_MCP_MAX_CELL_CHARS`, `NL2SQL_MCP_MAX_RESULT_BYTES`
+- LLM config for agent: `NL2SQL_MCP_LLM_PROVIDER`, `NL2SQL_MCP_LLM_MODEL` (+ optional temperature/top_p/top_k/max tokens)
+
+
+## Run
+
+Start the MCP server:
+
+```bash
+uv run nl2sql-mcp
+# or
+uv run python -m nl2sql_mcp.server
+```
+
+Try the local harnesses (require a live DB and `.env`):
+
+```bash
+# Schema intelligence demo
+uv run python scripts/test_intelligence_harness.py "show sales by region"
+
+# SQLGlot helpers demo
+uv run python scripts/test_sqlglot_harness.py "select top 10 * from dbo.Customers"
+
+# ask_database agent demo
+uv run python scripts/test_agent_harness.py "top 5 customers by total order amount last 30 days"
+```
+
+FastMCP documentation: https://gofastmcp.com/llms.txt
+
+
+## Development
+
+Formatting, lint, types, and tests:
+
+```bash
+uv run ruff format .
+uv run ruff check --fix .
+uv run basedpyright
+uv run pytest -q
+```
+
+Project structure:
+- `src/nl2sql_mcp/` — main package (server, intelligence, services, builders)
+- `scripts/` — local harnesses and demos
+- `tests/` — test suite
+- `docs/`, `examples/`, `data/` — reference and samples
+
+Coding standards:
+- Python 3.13, strict type checking, Pydantic/dataclasses for structured data
+- Pure functions and dependency injection for testability
+- No hard‑coded schema logic; engine‑agnostic via SQLAlchemy
+
+
+## Supported Dialects
+
+Validation/transpile support via `sqlglot` for:
+`sql`, `postgres`, `mysql`, `sqlite`, `tsql`, `oracle`, `snowflake`, `bigquery`.
+
+
+## Notes
+
+- Embeddings are optional at runtime; retrieval falls back to lexical methods.
+- The schema service is initialized once per process and exposes readiness state for clients.
+

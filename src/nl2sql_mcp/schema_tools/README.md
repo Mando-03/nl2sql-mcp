@@ -254,7 +254,7 @@ flowchart TD
 
 ## MCP Tools Interface
 
-The system exposes three primary MCP tools for LLM consumption:
+The system exposes MCP tools for LLM consumption:
 
 ```mermaid
 sequenceDiagram
@@ -280,6 +280,16 @@ sequenceDiagram
     MCP-->>LLM: High-level schema summary
     
     Note over LLM,SC: get_table_info Flow
+    
+    Note over LLM,MCP: discovery helpers
+    LLM->>MCP: find_tables("orders by customer")
+    MCP-->>LLM: TableSearchHit[]
+    LLM->>MCP: find_columns("email", by_table="public.customers")
+    MCP-->>LLM: ColumnSearchHit[]
+    
+    Note over LLM,MCP: lifecycle
+    LLM->>MCP: get_init_status()
+    MCP-->>LLM: InitStatus
     LLM->>MCP: get_table_info("public.customers")
     MCP->>SC: get_table_profile()
     SC-->>MCP: Detailed TableProfile
@@ -288,18 +298,37 @@ sequenceDiagram
 
 ### MCP Tool Details
 
-#### 1. `analyze_query_schema(query, max_tables=5)`
+#### 1. `analyze_query_schema(query, max_tables=5, ...)`
 - **Purpose**: Find relevant tables and schema info for a specific query
 - **Process**: Query → Retrieval → Expansion → Schema enrichment
-- **Output**: `QuerySchemaResult` with relevant tables, constraints, and relationships
+- **Output**: `QuerySchemaResult` with rich planning aids:
+  - `relevant_tables`, `join_examples`, `key_columns`
+  - `suggested_approach`, `main_table`
+  - `join_plan` (structured ON pairs), `group_by_candidates`, `filter_candidates`, `selected_columns`
 
 #### 2. `get_database_overview()`
 - **Purpose**: High-level database overview with business context
 - **Output**: `DatabaseOverview` with subject areas, table counts, and summaries
 
-#### 3. `get_table_info(table_key, include_samples=True)`
+#### 3. `get_table_info(table_key, include_samples=True, column_role_filter=None, ...)`
 - **Purpose**: Detailed table information optimized for SQL development
-- **Output**: Complete `TableProfile` with columns, relationships, and constraints
+- **Output**: `TableInfo` with columns, relationships, PK/FK, samples and common filters
+
+#### 4. `find_tables(query, limit=10, approach="combo", alpha=0.7)`
+- **Purpose**: Fast table discovery by intent/keywords
+- **Output**: `TableSearchHit[]` with scores and optional summaries
+
+#### 5. `find_columns(keyword, limit=25, by_table=None)`
+- **Purpose**: Column discovery for SELECT/WHERE scaffolding; uses column embeddings when available, falls back to lexical
+- **Output**: `ColumnSearchHit[]`
+
+#### 6. `get_init_status()`
+- **Purpose**: Report schema service readiness and previous failure details
+- **Output**: `InitStatus { phase, attempts, started_at, completed_at, error_message }`
+
+#### 7. `get_subject_areas(limit=12)`
+- **Purpose**: List subject areas discovered during analysis
+- **Output**: `SubjectAreaItem[]` with id, name, tables, summary
 
 ## Data Models
 
