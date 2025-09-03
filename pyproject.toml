@@ -6,9 +6,6 @@ readme = "README.md"
 authors = [
     { name = "Jonathan Bradshaw", email = "jonathan.bradshaw@3cloudsolutions.com" },
 ]
-maintainers = [
-    { name = "Jonathan Bradshaw", email = "jonathan.bradshaw@3cloudsolutions.com" },
-]
 requires-python = ">=3.13"
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -23,7 +20,6 @@ keywords = ["mcp", "sql", "natural-language", "ai"]
 dependencies = [
     "fastmcp>=2.0.0",
     "pydantic>=2.0.0",
-    "pydantic-settings>=2.0.0",
     "sqlalchemy[asyncio]>=2.0.0",
     "sqlglot>=25.7.0",
     "pyodbc>=5.0.0",                # Database support
@@ -34,6 +30,14 @@ dependencies = [
     "numpy>=2.3.2",
     "pip>=25.2",
     "geoalchemy2>=0.18.0",
+]
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.31.3",
+    "pytest>=8.4.1",
+    "ruff>=0.12.11",
+    "pytest-asyncio>=0.23.6",
 ]
 
 [project.scripts]
@@ -220,11 +224,3 @@ markers = [
     "unit: marks tests as unit tests",
 ]
 filterwarnings = ["error", "ignore::UserWarning", "ignore::DeprecationWarning"]
-
-[dependency-groups]
-dev = [
-    "basedpyright>=1.31.3",
-    "pytest>=8.4.1",
-    "ruff>=0.12.11",
-    "pytest-asyncio>=0.23.6",
-]

@@ -17,27 +17,60 @@ A natural‑language‑to‑SQL Model Context Protocol (MCP) server that execute
 
 ## Architecture
 
-The system separates expensive schema analysis from fast per‑query processing:
-
 ```mermaid
-graph TB
-  subgraph "Phase 1: Schema Analysis (Run Once)"
-    DB[(Database)] --> SE[SchemaExplorer]
-    SE --> SC[SchemaCard]
-    SC --> DISK[Serialized Schema Card]
+graph TD
+  A[Client / LLM<br/>MCP Tool Calls] -- FastMCP --> B[nl2sql-mcp Server]
+
+  subgraph B1[Server Core]
+    B11[Lifecycle / Config<br/>(Pydantic models)]
+    B12[SchemaService<br/>(reflect + cache + readiness)]
+    B13[Tool Router<br/>(FastMCP)]
   end
 
-  subgraph "Phase 2: Query Processing (Fast)"
-    DISK --> QE[QueryEngine]
-    NLQ[Natural Language] --> QE
-    QE --> MCP[MCP Tools]
+  B --> B1
+  B1 -->|ready?| B12
+
+  subgraph T[Exposed MCP Tools]
+    T1[get_init_status]
+    T2[get_database_overview]
+    T3[plan_query_for_intent]
+    T4[get_table_info]
+    T5[(optional) find_tables / find_columns]
+    T6[sqlglot_* helpers]
+    T7[execute_query]
   end
 
-  MCP --> EXEC[execute_query]
+  B13 --> T1
+  B13 --> T2
+  B13 --> T3
+  B13 --> T4
+  B13 --> T5
+  B13 --> T6
+  B13 --> T7
+
+  subgraph INT[Intelligence Modules]
+    I1[Schema Tools<br/>analysis + planning]
+    I2[SQLGlot Tools<br/>validate / transpile / optimize / metadata]
+  end
+
+  T2 --> I1
+  T3 --> I1
+  T4 --> I1
+  T5 --> I1
+  T6 --> I2
+
+  subgraph DB[Database]
+    D1[(SQLAlchemy Engine)]
+    D2[(Your RDBMS: Postgres / MySQL / SQL Server / SQLite / etc.)]
+  end
+
+  T7 -- SELECT‑only --> D1 --> D2
+
+  I1 -->|introspection| D1
+  B12 -->|reflect / cache| D1
 ```
 
-- Phase 1 builds a `SchemaCard` with subject areas, table/column profiles, constraints, and graph metrics.
-- Phase 2 answers queries using multi‑modal retrieval + FK‑graph expansion against the prebuilt card.
+Alt text: The client calls FastMCP tools exposed by the nl2sql-mcp server. A core layer manages config, readiness, and routing to tools. Intelligence modules power schema analysis and SQLGlot helpers. All database access goes through SQLAlchemy; execute_query enforces SELECT-only. The SchemaService reflects and caches metadata and reports readiness.
 
 
 ## Modules
