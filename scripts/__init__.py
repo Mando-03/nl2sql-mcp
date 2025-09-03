@@ -3,4 +3,3 @@
 This file silences linter warnings about implicit namespace packages
 for the `scripts/` directory.
 """
-

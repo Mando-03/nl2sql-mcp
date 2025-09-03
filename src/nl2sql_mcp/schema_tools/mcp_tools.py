@@ -13,7 +13,6 @@ from typing import Literal
 from fastmcp import Context, FastMCP
 from fastmcp.utilities.logging import get_logger
 
-from nl2sql_mcp.intelligence.constants import RetrievalApproach
 from nl2sql_mcp.models import (
     ColumnSearchHit,
     DatabaseSummary,
@@ -23,6 +22,7 @@ from nl2sql_mcp.models import (
     TableInfo,
     TableSearchHit,
 )
+from nl2sql_mcp.schema_tools.constants import RetrievalApproach
 from nl2sql_mcp.services.schema_service_manager import SchemaServiceManager
 
 _logger = get_logger(__name__)

@@ -14,6 +14,22 @@ import sqlalchemy as sa
 from nl2sql_mcp.schema_tools.models import SchemaExplorerConfig
 
 
+class LLMConfig:
+    """Typed configuration for the LLM provider and model.
+
+    Values are sourced from environment variables and validated at startup.
+    """
+
+    # Keep the initializer small to satisfy lint; set attributes afterwards.
+    def __init__(self, *, provider: str, model: str) -> None:
+        self.provider = provider
+        self.model = model
+        self.temperature = 0.2
+        self.top_p = 1.0
+        self.top_k = 50
+        self.max_output_tokens = 800
+
+
 class ConfigService:
     """Service for managing configuration and database connections."""
 
@@ -73,3 +89,68 @@ class ConfigService:
         )
 
     # Unused specialized config helpers removed to reduce API surface
+
+    # ---- LLM configuration -----------------------------------------------
+    @staticmethod
+    def get_llm_config() -> LLMConfig:
+        """Return LLM configuration from environment variables.
+
+        Required variables:
+            - NL2SQL_MCP_LLM_PROVIDER
+            - NL2SQL_MCP_LLM_MODEL
+
+        Optional tunables with sane defaults:
+            - NL2SQL_MCP_LLM_TEMPERATURE (default 0.2)
+            - NL2SQL_MCP_LLM_TOP_P (default 1.0)
+            - NL2SQL_MCP_LLM_TOP_K (default 50)
+            - NL2SQL_MCP_LLM_MAX_OUTPUT_TOKENS (default 800)
+        """
+        provider = os.getenv("NL2SQL_MCP_LLM_PROVIDER")
+        model = os.getenv("NL2SQL_MCP_LLM_MODEL")
+        if not provider or not model:
+            msg = (
+                "LLM configuration missing: set NL2SQL_MCP_LLM_PROVIDER and NL2SQL_MCP_LLM_MODEL"
+            )
+            raise ValueError(msg)
+
+        def _f(env: str, default: str) -> str:
+            val = os.getenv(env)
+            return val if val is not None else default
+
+        cfg = LLMConfig(provider=provider, model=model)
+        cfg.temperature = float(_f("NL2SQL_MCP_LLM_TEMPERATURE", "0.2"))
+        cfg.top_p = float(_f("NL2SQL_MCP_LLM_TOP_P", "1.0"))
+        cfg.top_k = int(_f("NL2SQL_MCP_LLM_TOP_K", "50"))
+        cfg.max_output_tokens = int(_f("NL2SQL_MCP_LLM_MAX_OUTPUT_TOKENS", "800"))
+        return cfg
+
+    # ---- Result size budgets ---------------------------------------------
+    @staticmethod
+    def result_row_limit() -> int:
+        """Maximum number of rows to return in results."""
+        val = os.getenv("NL2SQL_MCP_ROW_LIMIT", "200")
+        try:
+            limit = int(val)
+        except ValueError:
+            limit = 200
+        return max(1, limit)
+
+    @staticmethod
+    def result_max_cell_chars() -> int:
+        """Maximum characters per cell value in results."""
+        val = os.getenv("NL2SQL_MCP_MAX_CELL_CHARS", "200")
+        try:
+            n = int(val)
+        except ValueError:
+            n = 200
+        return max(10, n)
+
+    @staticmethod
+    def result_max_payload_bytes() -> int:
+        """Soft cap for serialized result payload size (bytes)."""
+        val = os.getenv("NL2SQL_MCP_MAX_RESULT_BYTES", "200000")
+        try:
+            n = int(val)
+        except ValueError:
+            n = 200000
+        return max(50000, n)
