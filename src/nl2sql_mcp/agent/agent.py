@@ -14,6 +14,7 @@ from collections.abc import Iterable
 import time
 from typing import cast
 
+from fastmcp.utilities.logging import get_logger
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 import sqlalchemy as sa
@@ -38,6 +39,9 @@ class LlmSqlPlan(BaseModel):
     )
     sql: str = Field(description="A single executable, safe SELECT query")
     confidence: float = Field(ge=0.0, le=1.0, description="Model confidence in the SQL")
+
+
+_logger = get_logger(__name__)
 
 
 def _enforce_select_only(sql: str) -> None:
@@ -66,20 +70,6 @@ def _enforce_select_only(sql: str) -> None:
 def _strip_trailing_semicolon(sql: str) -> str:
     s = sql.strip()
     return s.removesuffix(";")
-
-
-def _has_any_limit(sql: str) -> bool:
-    """Detect whether the query already includes a limiting construct.
-
-    Checks for LIMIT (most dialects), TOP (T-SQL), or OFFSET/FETCH (T-SQL/Postgres).
-    """
-    s = sql.lower()
-    return (
-        " limit " in s
-        or s.endswith(" limit")
-        or " select top " in s
-        or (" offset " in s and " fetch next " in s)
-    )
 
 
 def _truncate_value(val: object, max_chars: int) -> str | int | float | bool | None:
@@ -124,7 +114,7 @@ def build_llm_agent(llm: LLMConfig) -> Agent[AgentDeps, LlmSqlPlan]:
         "- Prefer columns/tables provided in the schema context.\n"
         "- If ambiguous, choose safe defaults and list clarifications_needed.\n"
         "- Keep the query readable and minimal; avoid SELECT *.\n"
-        "- Include LIMIT only if the user requests it; the caller will clamp results.\n"
+        "- Specify a LIMIT clause when appropriate.\n"
     )
 
     model_id = f"{llm.provider}:{llm.model}" if ":" not in llm.model else llm.model
@@ -154,6 +144,14 @@ def run_ask_flow(
     in the event loop thread since the DB interaction is short-lived in v1.
     """
 
+    _logger.info(
+        "run_ask_flow: start (question=%s, dialect=%s, row_limit=%d, max_cell_chars=%d)",
+        question,
+        deps.active_dialect,
+        deps.row_limit,
+        deps.max_cell_chars,
+    )
+
     agent = build_llm_agent(llm)
     # Build a compact prompt with schema guidance
     # Keep under model token limits; include only essentials
@@ -161,7 +159,9 @@ def run_ask_flow(
     for t in schema.relevant_tables:
         cols = ", ".join(c.name for c in t.columns[:8])
         table_lines.append(f"- {t.name}: {cols}")
-    join_lines = [f"- {j.sql_syntax}" for j in schema.join_examples[: deps.row_limit // 50]]
+    total_joins = len(schema.join_examples)
+    join_take = deps.row_limit // 50
+    join_lines = [f"- {j.sql_syntax}" for j in schema.join_examples[:join_take]]
     context = (
         "Schema context (abbrev):\n"
         + "\n".join(table_lines[:10])
@@ -176,33 +176,38 @@ def run_ask_flow(
         "confidence (0-1)."
     )
 
+    _logger.info(
+        "Prompt context prepared (tables_included=%d, joins_included=%d/%d, dialect=%s)",
+        min(len(schema.relevant_tables), 10),
+        len(join_lines),
+        total_joins,
+        deps.active_dialect,
+    )
+
+    _logger.info("Prompt prepared: %s", prompt)
+
     llm_result = agent.run_sync(prompt, deps=deps)
     plan = llm_result.output
+    _logger.info(
+        "LLM plan produced (confidence=%.2f, clarifications=%d)",
+        plan.confidence,
+        len(plan.clarifications_needed),
+    )
+    _logger.info("Planned SQL (raw): %s", plan.sql.strip())
 
     # Safety checks and normalization
     _enforce_select_only(plan.sql)
 
-    # Ensure row limiting in a dialect-aware way (avoid invalid LIMIT on T-SQL)
-    original = _strip_trailing_semicolon(plan.sql)
-    has_limit = _has_any_limit(original)
-    if has_limit:
-        base_sql = original
-    elif deps.active_dialect == "tsql":
-        # Prefer OFFSET/FETCH when ORDER BY present; otherwise rely on fetchmany
-        if " order by " in original.lower():
-            base_sql = (
-                f"{original}\nOFFSET 0 ROWS FETCH NEXT {deps.row_limit} ROWS ONLY"
-            )
-        else:
-            base_sql = original
-    else:
-        base_sql = f"{original}\nLIMIT {deps.row_limit}"
+    # Use the SQL exactly as planned by the LLM
+    plan_sql = _strip_trailing_semicolon(plan.sql)
 
     # Normalize and transpile to the active dialect (handles T-SQL TOP, etc.)
     trans = glot.auto_transpile_for_database(
-        SqlAutoTranspileRequest(sql=base_sql, target_dialect=cast(Dialect, deps.active_dialect))
+        SqlAutoTranspileRequest(sql=plan_sql, target_dialect=cast(Dialect, deps.active_dialect))
     )
     sql_to_run = trans.sql
+    if trans.notes:
+        _logger.info("Transpile notes: %s", "; ".join(trans.notes))
 
     # Validate final SQL for the dialect and collect notes
     validation = glot.validate(
@@ -213,6 +218,8 @@ def run_ask_flow(
         notes.extend(trans.notes)
     if not validation.is_valid and validation.error_message:
         notes.append(validation.error_message)
+        _logger.warning("SQL validation reported: %s", validation.error_message)
+    _logger.info("SQL to execute (%s): %s", deps.active_dialect, sql_to_run)
 
     # Execute
     elapsed_ms: float
@@ -229,6 +236,13 @@ def run_ask_flow(
         truncated = len(raw_rows) > deps.row_limit
         rows = _truncate_rows(raw_rows, cols, deps.row_limit, deps.max_cell_chars)
     elapsed_ms = (time.perf_counter() - start) * 1000.0
+    _logger.info(
+        "Execution finished (elapsed_ms=%.1f, rows_returned=%d, truncated=%s)",
+        elapsed_ms,
+        returned,
+        truncated,
+    )
+    _logger.info("Result columns: %s", ", ".join(cols))
 
     # Next-step guidance
     next_steps: list[str] = []
@@ -236,8 +250,10 @@ def run_ask_flow(
         next_steps.append(
             "Results truncated; add WHERE filters or ask for aggregation/pagination."
         )
-    if plan.clarifications_needed:
-        next_steps.extend([f"Clarify: {q}" for q in plan.clarifications_needed])
+        _logger.warning(
+            "Results truncated at row_limit=%d; suggest filtering or aggregation",
+            deps.row_limit,
+        )
 
     return AskDatabaseResult(
         question=question,
