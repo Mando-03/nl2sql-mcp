@@ -8,8 +8,10 @@ LLM-friendly tools to a provided FastMCP instance, delegating logic to
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Annotated
 
 from fastmcp import Context, FastMCP
+from pydantic import Field
 
 from .models import (
     Dialect,
@@ -43,7 +45,10 @@ def register_sqlglot_tools(
     """
 
     @mcp.tool
-    async def sql_validate(_ctx: Context, sql: str) -> SqlValidationResult:  # pyright: ignore[reportUnusedFunction]
+    async def sql_validate(
+        _ctx: Context,
+        sql: Annotated[str, Field(description="SQL string to validate")],
+    ) -> SqlValidationResult:  # pyright: ignore[reportUnusedFunction]
         """Validate SQL syntax for the current database dialect.
 
         Designed for pre-execution checks to ensure an LLM's SQL parses
@@ -55,7 +60,9 @@ def register_sqlglot_tools(
 
     @mcp.tool
     async def sql_transpile_to_database(
-        _ctx: Context, sql: str, source_dialect: Dialect
+        _ctx: Context,
+        sql: Annotated[str, Field(description="SQL to transpile")],
+        source_dialect: Annotated[Dialect, Field(description="Source dialect")],
     ) -> SqlTranspileResult:  # pyright: ignore[reportUnusedFunction]
         """Transpile SQL from a given source dialect into the active database dialect."""
         target = dialect_provider()
@@ -64,7 +71,12 @@ def register_sqlglot_tools(
 
     @mcp.tool
     async def sql_optimize_for_database(
-        _ctx: Context, sql: str, schema_map: dict[str, dict[str, str]] | None = None
+        _ctx: Context,
+        sql: Annotated[str, Field(description="SQL to optimize")],
+        schema_map: Annotated[
+            dict[str, dict[str, str]] | None,
+            Field(description="Optional schema map: table -> column -> type"),
+        ] = None,
     ) -> SqlOptimizeResult:  # pyright: ignore[reportUnusedFunction]
         """Optimize and normalize SQL for the active database dialect.
 
@@ -76,7 +88,10 @@ def register_sqlglot_tools(
         return service.optimize(req)
 
     @mcp.tool
-    async def sql_extract_metadata(_ctx: Context, sql: str) -> SqlMetadataResult:  # pyright: ignore[reportUnusedFunction]
+    async def sql_extract_metadata(
+        _ctx: Context,
+        sql: Annotated[str, Field(description="SQL to analyze")],
+    ) -> SqlMetadataResult:  # pyright: ignore[reportUnusedFunction]
         """Extract structural metadata (tables, columns, joins) for the active database dialect."""
         dialect = dialect_provider()
         req = SqlMetadataRequest(sql=sql, dialect=dialect)
@@ -84,7 +99,11 @@ def register_sqlglot_tools(
 
     @mcp.tool
     async def sql_assist_from_error(
-        _ctx: Context, sql: str, error_message: str
+        _ctx: Context,
+        sql: Annotated[str, Field(description="The SQL that failed at execution time")],
+        error_message: Annotated[
+            str, Field(description="The database error text returned by the server")
+        ],
     ) -> SqlErrorAssistResult:  # pyright: ignore[reportUnusedFunction]
         """Suggest fixes based on a database execution error.
 
@@ -106,8 +125,14 @@ def register_sqlglot_tools(
     )
 
     @mcp.tool
-    async def sql_auto_transpile_for_database(_ctx: Context, sql: str) -> SqlAutoTranspileResult:  # pyright: ignore[reportUnusedFunction]
+    async def sql_auto_transpile_for_database(
+        _ctx: Context,
+        sql: Annotated[str, Field(description="SQL to analyze and possibly transpile")],
+    ) -> SqlAutoTranspileResult:  # pyright: ignore[reportUnusedFunction]
         """Auto-detect source dialect and transpile to the active database dialect."""
         dialect = dialect_provider()
         req = SqlAutoTranspileRequest(sql=sql, target_dialect=dialect)
         return service.auto_transpile_for_database(req)
+
+    # Keep analyzers aware this nested function is intentionally used
+    _ = (sql_auto_transpile_for_database,)

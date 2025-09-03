@@ -9,22 +9,19 @@ instance while delegating actual logic to services obtained via
 from __future__ import annotations
 
 import os
+from typing import Annotated, Literal
 
 from fastmcp import Context, FastMCP
 from fastmcp.utilities.logging import get_logger
+from pydantic import Field
 
 from nl2sql_mcp.models import (
     ColumnSearchHit,
-    DatabaseOverviewRequest,
     DatabaseSummary,
-    FindColumnsRequest,
-    FindTablesRequest,
     InitStatus,
-    PlanQueryRequest,
     QuerySchemaResult,
     SubjectAreaItem,
     TableInfo,
-    TableInfoRequest,
     TableSearchHit,
 )
 from nl2sql_mcp.schema_tools.constants import RetrievalApproach
@@ -45,7 +42,33 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
 
     @mcp.tool
     async def plan_query_for_intent(  # pyright: ignore[reportUnusedFunction]
-        ctx: Context, req: PlanQueryRequest
+        ctx: Context,
+        request: Annotated[
+            str,
+            Field(
+                description=(
+                    "User's question or goal in natural language. Example: "
+                    "'Total revenue by month for 2024 for the US region.'"
+                )
+            ),
+        ],
+        constraints: Annotated[
+            dict[str, str | int | float | bool] | None,
+            Field(description=("Optional constraints (e.g., time_range, region, metric).")),
+        ] = None,
+        detail_level: Annotated[
+            Literal["standard", "full"],
+            Field(description=("Controls planning verbosity; 'full' returns more columns/joins.")),
+        ] = "standard",
+        budget: Annotated[
+            dict[str, int] | None,
+            Field(
+                description=(
+                    "Optional response-size caps. Keys: tables, columns_per_table, sample_values. "
+                    "Example: {tables: 5, columns_per_table: 20, sample_values: 3}."
+                )
+            ),
+        ] = None,
     ) -> QuerySchemaResult:
         """Plan a SQL solution for a natural-language request.
 
@@ -53,9 +76,7 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
         can proceed directly to execution or ask for clarifications.
         """
 
-        preview = req.request[:MAX_QUERY_DISPLAY] + (
-            "..." if len(req.request) > MAX_QUERY_DISPLAY else ""
-        )
+        preview = request[:MAX_QUERY_DISPLAY] + ("..." if len(request) > MAX_QUERY_DISPLAY else "")
         _logger.info("Planning query for intent: %s", preview)
         try:
             schema_service = await mgr.get_schema_service()
@@ -64,22 +85,22 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
             raise
 
         # Internal defaults; map optional budget to internal caps
-        budget = req.budget or {}
+        budget = budget or {}
         max_tables = int(budget.get("tables", 5))
         max_columns_per_table = int(budget.get("columns_per_table", 20))
         max_sample_values = int(budget.get("sample_values", 3))
         join_limit = 8
 
         # Acknowledge constraints for future rule application and telemetry
-        if req.constraints:
-            _logger.info("Constraints keys provided: %s", ",".join(sorted(req.constraints.keys())))
+        if constraints:
+            _logger.info("Constraints keys provided: %s", ",".join(sorted(constraints.keys())))
 
         result = schema_service.analyze_query_schema(
-            req.request,
+            request,
             max_tables,
             approach=RetrievalApproach.COMBINED,
             alpha=0.7,
-            detail_level=req.detail_level,
+            detail_level=detail_level,
             include_samples=False,
             max_sample_values=max_sample_values,
             max_columns_per_table=max_columns_per_table,
@@ -90,7 +111,14 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
 
     @mcp.tool
     async def get_database_overview(  # pyright: ignore[reportUnusedFunction]
-        ctx: Context, req: DatabaseOverviewRequest
+        ctx: Context,
+        *,
+        include_subject_areas: Annotated[
+            bool, Field(description="Include structured subject area data when true")
+        ] = False,
+        area_limit: Annotated[
+            int, Field(ge=1, description="Maximum number of subject areas to include")
+        ] = 8,
     ) -> DatabaseSummary:
         """Summarize schemas and key areas to orient query planning."""
         _logger.info("Retrieving database overview")
@@ -101,17 +129,36 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
             raise
 
         result = schema_service.get_database_overview(
-            include_subject_areas=req.include_subject_areas, area_limit=req.area_limit
+            include_subject_areas=include_subject_areas, area_limit=area_limit
         )
         _logger.info("Retrieved database overview with %d total tables", result.total_tables)
         return result
 
     @mcp.tool
     async def get_table_info(  # pyright: ignore[reportUnusedFunction]
-        ctx: Context, req: TableInfoRequest
+        ctx: Context,
+        *,
+        table_key: Annotated[str, Field(description="Fully qualified table name 'schema.table'")],
+        include_samples: Annotated[
+            bool, Field(description="Include representative sample values for columns")
+        ] = True,
+        column_role_filter: Annotated[
+            list[Literal["metric", "date", "key", "category", "text"]] | None,
+            Field(description="If provided, only return columns with these business roles"),
+        ] = None,
+        max_sample_values: Annotated[
+            int,
+            Field(
+                ge=0,
+                description=("Maximum samples per column when samples are included"),
+            ),
+        ] = 5,
+        relationship_limit: Annotated[
+            int | None, Field(ge=0, description="Limit the number of relationships returned")
+        ] = None,
     ) -> TableInfo:
         """Explain a table's purpose, columns, relationships, and representative values."""
-        _logger.info("Retrieving table information for: %s", req.table_key)
+        _logger.info("Retrieving table information for: %s", table_key)
         try:
             schema_service = await mgr.get_schema_service()
         except (RuntimeError, ValueError) as exc:
@@ -120,18 +167,18 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
 
         try:
             result: TableInfo = schema_service.get_table_information(
-                req.table_key,
-                include_samples=req.include_samples,
-                column_role_filter=req.column_role_filter,  # type: ignore[arg-type]
-                max_sample_values=req.max_sample_values,
-                relationship_limit=req.relationship_limit,
+                table_key,
+                include_samples=include_samples,
+                column_role_filter=column_role_filter,  # type: ignore[arg-type]
+                max_sample_values=max_sample_values,
+                relationship_limit=relationship_limit,
             )
         except KeyError as exc:
             await ctx.error(f"Table not found: {exc}")
             raise
 
         _logger.info(
-            "Retrieved table information for %s (%d columns)", req.table_key, len(result.columns)
+            "Retrieved table information for %s (%d columns)", table_key, len(result.columns)
         )
         return result
 
@@ -141,12 +188,21 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
 
         @mcp.tool
         async def find_tables(  # pyright: ignore[reportUnusedFunction]
-            ctx: Context, req: FindTablesRequest
+            ctx: Context,
+            query: Annotated[str, Field(description="Intent/keywords to locate relevant tables")],
+            limit: Annotated[
+                int, Field(default=10, ge=1, le=50, description="Maximum number of hits")
+            ] = 10,
+            approach: Annotated[
+                Literal["combo", "lexical", "emb_table", "emb_column"],
+                Field(description="Retrieval strategy"),
+            ] = "combo",
+            alpha: Annotated[
+                float, Field(default=0.7, ge=0.0, le=1.0, description="Blend weight for combo")
+            ] = 0.7,
         ) -> list[TableSearchHit]:
             """Find relevant tables quickly by intent/keywords (debug)."""
-            preview = req.query[:MAX_QUERY_DISPLAY] + (
-                "..." if len(req.query) > MAX_QUERY_DISPLAY else ""
-            )
+            preview = query[:MAX_QUERY_DISPLAY] + ("..." if len(query) > MAX_QUERY_DISPLAY else "")
             _logger.info("Finding tables for query: %s", preview)
             try:
                 schema_service = await mgr.get_schema_service()
@@ -159,26 +215,31 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
                 "lexical": RetrievalApproach.LEXICAL,
                 "emb_table": RetrievalApproach.EMBEDDING_TABLE,
                 "emb_column": RetrievalApproach.EMBEDDING_COLUMN,
-            }[req.approach]
-            hits = schema_service.find_tables(
-                req.query, req.limit, approach=approach_enum, alpha=req.alpha
-            )
+            }[approach]
+            hits = schema_service.find_tables(query, limit, approach=approach_enum, alpha=alpha)
             _logger.info("Found %d table hits", len(hits))
             return hits
 
         @mcp.tool
         async def find_columns(  # pyright: ignore[reportUnusedFunction]
-            ctx: Context, req: FindColumnsRequest
+            ctx: Context,
+            keyword: Annotated[str, Field(description="Keyword to match columns")],
+            limit: Annotated[
+                int, Field(default=25, ge=1, le=200, description="Maximum number of hits")
+            ] = 25,
+            by_table: Annotated[
+                str | None, Field(description="Restrict search to a specific 'schema.table'")
+            ] = None,
         ) -> list[ColumnSearchHit]:
             """Locate columns for SELECT/WHERE scaffolding (debug)."""
-            _logger.info("Finding columns for keyword: %s", req.keyword)
+            _logger.info("Finding columns for keyword: %s", keyword)
             try:
                 schema_service = await mgr.get_schema_service()
             except (RuntimeError, ValueError) as exc:
                 await ctx.error(f"Schema service not ready: {exc}")
                 raise
 
-            hits = schema_service.find_columns(req.keyword, req.limit, by_table=req.by_table)
+            hits = schema_service.find_columns(keyword, limit, by_table=by_table)
             _logger.info("Found %d column hits", len(hits))
             return hits
 
@@ -217,7 +278,9 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
 
     @mcp.tool
     async def get_subject_areas(  # pyright: ignore[reportUnusedFunction]
-        ctx: Context, limit: int = 12
+        ctx: Context,
+        *,
+        limit: Annotated[int, Field(ge=1, description="Maximum number of areas to return")] = 12,
     ) -> list[SubjectAreaItem]:
         """List subject areas detected in the database."""
         _logger.info("Retrieving subject areas (limit=%d)", limit)
