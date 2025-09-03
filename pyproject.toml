@@ -26,15 +26,13 @@ dependencies = [
     "pydantic-settings>=2.0.0",
     "sqlalchemy[asyncio]>=2.0.0",
     "sqlglot>=25.7.0",
-    "pytest-asyncio>=0.23.6",
-    "pyodbc>=5.0.0", # Database support
+    "pyodbc>=5.0.0",                # Database support
     "pandas>=2.3.2",
     "networkx>=3.5",
     "sentence-transformers>=5.1.0",
     "annoy>=1.17.0",
     "numpy>=2.3.2",
     "pip>=25.2",
-    "aiojobs>=1.4.0",
     "geoalchemy2>=0.18.0",
 ]
 
@@ -55,17 +53,17 @@ output-format = "grouped"
 
 [tool.ruff.lint]
 per-file-ignores = { "scripts/*.py" = [
-    "T201",   # print found in local scripts
-    "TRY003", # long messages in exceptions (script-only)
-    "EM101",  # exception message literal (script-only)
-    "FBT001", # boolean positional args (script-only)
-    "FBT002", # boolean default positional arg (script-only)
-    "PLR2004",# magic values (script-only)
-    "BLE001", # broad except in scripts
-    "E501",   # line length in scripts
-    "PLR0912",# too many branches (script-only)
-    "PLR0915",# too many statements (script-only)
-    "PT028",  # test function default arg (script-only)
+    "T201",    # print found in local scripts
+    "TRY003",  # long messages in exceptions (script-only)
+    "EM101",   # exception message literal (script-only)
+    "FBT001",  # boolean positional args (script-only)
+    "FBT002",  # boolean default positional arg (script-only)
+    "PLR2004", # magic values (script-only)
+    "BLE001",  # broad except in scripts
+    "E501",    # line length in scripts
+    "PLR0912", # too many branches (script-only)
+    "PLR0915", # too many statements (script-only)
+    "PT028",   # test function default arg (script-only)
 ], "examples/**/*.py" = [
     "T201", # Print found (allowed in examples)
 ], "tests/**/*.py" = [
@@ -132,14 +130,14 @@ select = [
     "RUF",   # ruff-specific
 ]
 ignore = [
-    "ANN401", # Dynamically typed expressions (typing.Any)
-    "COM812", # Trailing comma missing (conflicts with formatter)
-    "ISC001", # Implicitly concatenated string literals (conflicts with formatter)
-    "TD002",  # Missing author in TODO
-    "TD003",  # Missing issue link on line following TODO
-    "FIX002", # Line contains TODO
-    "TRY300", # try-consider-else
-    "TRY301", # Abstract `raise` to an inner function
+    "ANN401",  # Dynamically typed expressions (typing.Any)
+    "COM812",  # Trailing comma missing (conflicts with formatter)
+    "ISC001",  # Implicitly concatenated string literals (conflicts with formatter)
+    "TD002",   # Missing author in TODO
+    "TD003",   # Missing issue link on line following TODO
+    "FIX002",  # Line contains TODO
+    "TRY300",  # try-consider-else
+    "TRY301",  # Abstract `raise` to an inner function
     "PLR0915", # too-many-statements (allow small robust helpers)
 ]
 
@@ -224,4 +222,9 @@ markers = [
 filterwarnings = ["error", "ignore::UserWarning", "ignore::DeprecationWarning"]
 
 [dependency-groups]
-dev = ["basedpyright>=1.31.3", "pytest>=8.4.1", "ruff>=0.12.11"]
+dev = [
+    "basedpyright>=1.31.3",
+    "pytest>=8.4.1",
+    "ruff>=0.12.11",
+    "pytest-asyncio>=0.23.6",
+]

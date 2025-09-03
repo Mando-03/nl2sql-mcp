@@ -19,34 +19,44 @@ environment variable and tests each MCP tool with realistic examples.
 
 from __future__ import annotations
 
+from contextlib import suppress
 import os
 from pathlib import Path
 import sys
 import time
 
-import dotenv
+try:
+    import dotenv
+except Exception:  # pragma: no cover - optional dependency in scripts
+    dotenv = None
 
-# Load environment variables
-dotenv.load_dotenv()
+# Load environment variables from .env if python-dotenv is available
+if dotenv is not None:
+    with suppress(Exception):
+        dotenv.load_dotenv()
 
-# Add the src directory to the Python path for imports
-project_root = Path(__file__).parent
-src_path = project_root / "src"
-sys.path.insert(0, str(src_path))
+# Add the repository `src/` directory to the Python path for imports.
+# When running this script directly (uv run scripts/...), the src-layout
+# package isn't automatically on sys.path unless installed in editable mode.
+# We resolve two levels up (repo root) and append "src".
+repo_root = Path(__file__).resolve().parents[1]
+src_path = repo_root / "src"
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
 
 try:
     import sqlalchemy as sa
 
-    from nl2sql_mcp.intelligence.constants import RetrievalApproach
-    from nl2sql_mcp.intelligence.embeddings import Embedder
-    from nl2sql_mcp.intelligence.explorer import SchemaExplorer
-    from nl2sql_mcp.intelligence.models import SchemaExplorerConfig
     from nl2sql_mcp.models import (
         ColumnDetail,
         DatabaseSummary,
         QuerySchemaResult,
         TableInfo,
     )
+    from nl2sql_mcp.schema_tools.constants import RetrievalApproach
+    from nl2sql_mcp.schema_tools.embeddings import Embedder
+    from nl2sql_mcp.schema_tools.explorer import SchemaExplorer
+    from nl2sql_mcp.schema_tools.models import SchemaExplorerConfig
     from nl2sql_mcp.services.schema_service import SchemaService
 except ImportError as e:
     print(f"❌ Failed to import required packages: {e}")
