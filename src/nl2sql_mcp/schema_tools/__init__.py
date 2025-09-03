@@ -14,7 +14,7 @@ Main Components:
 
 Example Usage:
     >>> import sqlalchemy as sa
-    >>> from nl2sql_mcp.intelligence import SchemaExplorer, QueryEngine, SchemaExplorerConfig
+    >>> from nl2sql_mcp.schema_tools import SchemaExplorer, QueryEngine, SchemaExplorerConfig
     >>>
     >>> # Stage 1: Build schema card (run once, expensive)
     >>> engine = sa.create_engine("postgresql://user:pass@host/db")

@@ -11,8 +11,6 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 import sqlalchemy as sa
 
-from nl2sql_mcp.intelligence.explorer import SchemaExplorer
-from nl2sql_mcp.intelligence.utils import tokens_from_text
 from nl2sql_mcp.models import (
     ColumnDetail,
     DatabaseSummary,
@@ -25,9 +23,11 @@ from nl2sql_mcp.models import (
     TableInfo,
     TableSummary,
 )
+from nl2sql_mcp.schema_tools.explorer import SchemaExplorer
+from nl2sql_mcp.schema_tools.utils import tokens_from_text
 
 if TYPE_CHECKING:
-    from nl2sql_mcp.intelligence.models import TableProfile
+    from nl2sql_mcp.schema_tools.models import TableProfile
 
 # Constants for magic values
 MAX_DISTINCT_VALUES_FOR_FILTERS = 10

@@ -1,7 +1,7 @@
 """Schema service for nl2sql-mcp.
 
 This module provides the main business logic orchestration for database schema
-analysis operations. It coordinates between the intelligence modules and
+analysis operations. It coordinates between the schema_tools modules and
 response builders to provide high-level schema analysis capabilities.
 """
 
@@ -16,11 +16,6 @@ from nl2sql_mcp.builders import (
     QuerySchemaResultBuilder,
     TableInfoBuilder,
 )
-from nl2sql_mcp.intelligence.constants import RetrievalApproach
-from nl2sql_mcp.intelligence.embeddings import Embedder
-from nl2sql_mcp.intelligence.explorer import SchemaExplorer
-from nl2sql_mcp.intelligence.query_engine import QueryEngine
-from nl2sql_mcp.intelligence.utils import tokens_from_text
 from nl2sql_mcp.models import (
     ColumnSearchHit,
     DatabaseSummary,
@@ -28,6 +23,11 @@ from nl2sql_mcp.models import (
     TableInfo,
     TableSearchHit,
 )
+from nl2sql_mcp.schema_tools.constants import RetrievalApproach
+from nl2sql_mcp.schema_tools.embeddings import Embedder
+from nl2sql_mcp.schema_tools.explorer import SchemaExplorer
+from nl2sql_mcp.schema_tools.query_engine import QueryEngine
+from nl2sql_mcp.schema_tools.utils import tokens_from_text
 from nl2sql_mcp.services.config_service import ConfigService
 
 

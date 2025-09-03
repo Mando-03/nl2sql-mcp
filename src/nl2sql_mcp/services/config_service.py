@@ -11,7 +11,7 @@ import os
 
 import sqlalchemy as sa
 
-from nl2sql_mcp.intelligence.models import SchemaExplorerConfig
+from nl2sql_mcp.schema_tools.models import SchemaExplorerConfig
 
 
 class ConfigService:

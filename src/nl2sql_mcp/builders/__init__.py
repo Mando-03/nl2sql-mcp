@@ -1,7 +1,7 @@
 """Builders package for nl2sql-mcp.
 
 This package contains builder classes responsible for constructing response models
-from intelligence analysis results. Builders transform raw analysis data into
+from schema_tools analysis results. Builders transform raw analysis data into
 structured models suitable for MCP tool responses.
 
 Main Components:

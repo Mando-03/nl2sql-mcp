@@ -1,4 +1,4 @@
-"""MCP tool registration for intelligence (schema/query) features.
+"""MCP tool registration for schema_tools (schema/query) features.
 
 Matches the registration style used by sqlglot tools: exposes a
 `register_intelligence_tools` function that attaches tools to a FastMCP

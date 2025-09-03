@@ -19,8 +19,8 @@ from fastmcp.utilities.logging import get_logger
 import sqlalchemy as sa
 from sqlalchemy.exc import SQLAlchemyError
 
-from nl2sql_mcp.intelligence.embeddings import Embedder
-from nl2sql_mcp.intelligence.explorer import SchemaExplorer
+from nl2sql_mcp.schema_tools.embeddings import Embedder
+from nl2sql_mcp.schema_tools.explorer import SchemaExplorer
 from nl2sql_mcp.services.config_service import ConfigService
 from nl2sql_mcp.services.schema_service import SchemaService
 from nl2sql_mcp.services.state import (

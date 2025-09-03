@@ -2,7 +2,7 @@
 
 This package contains service classes that handle business logic and orchestration
 for the nl2sql-mcp application. Services are responsible for coordinating between
-the intelligence modules and the response builders.
+the schema_tools modules and the response builders.
 
 Main Components:
 - ConfigService: Configuration and database connection management

@@ -11,7 +11,7 @@ import dotenv
 from fastmcp import FastMCP
 from fastmcp.utilities.logging import get_logger
 
-from nl2sql_mcp.intelligence.mcp_tools import register_intelligence_tools
+from nl2sql_mcp.schema_tools.mcp_tools import register_intelligence_tools
 from nl2sql_mcp.services.schema_service_manager import SchemaServiceManager
 from nl2sql_mcp.sqlglot_tools import (
     SqlglotService,
@@ -79,4 +79,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
