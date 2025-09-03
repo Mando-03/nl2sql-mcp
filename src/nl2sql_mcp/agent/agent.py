@@ -22,7 +22,11 @@ from nl2sql_mcp.agent.models import AgentDeps, AskDatabaseResult
 from nl2sql_mcp.models import QuerySchemaResult
 from nl2sql_mcp.services.config_service import LLMConfig
 from nl2sql_mcp.sqlglot_tools import SqlglotService
-from nl2sql_mcp.sqlglot_tools.models import Dialect, SqlValidationRequest
+from nl2sql_mcp.sqlglot_tools.models import (
+    Dialect,
+    SqlAutoTranspileRequest,
+    SqlValidationRequest,
+)
 
 
 class LlmSqlPlan(BaseModel):
@@ -59,9 +63,23 @@ def _enforce_select_only(sql: str) -> None:
         raise ValueError(msg)
 
 
-def _has_limit(sql: str) -> bool:
-    lowered = sql.lower()
-    return " limit " in lowered or lowered.rstrip().endswith(" limit")
+def _strip_trailing_semicolon(sql: str) -> str:
+    s = sql.strip()
+    return s.removesuffix(";")
+
+
+def _has_any_limit(sql: str) -> bool:
+    """Detect whether the query already includes a limiting construct.
+
+    Checks for LIMIT (most dialects), TOP (T-SQL), or OFFSET/FETCH (T-SQL/Postgres).
+    """
+    s = sql.lower()
+    return (
+        " limit " in s
+        or s.endswith(" limit")
+        or " select top " in s
+        or (" offset " in s and " fetch next " in s)
+    )
 
 
 def _truncate_value(val: object, max_chars: int) -> str | int | float | bool | None:
@@ -164,19 +182,37 @@ def run_ask_flow(
     # Safety checks and normalization
     _enforce_select_only(plan.sql)
 
-    # Detect/normalize; do not force transpile across dialects here, assume same dialect
-    validation = glot.validate(
-        SqlValidationRequest(sql=plan.sql, dialect=cast(Dialect, deps.active_dialect))
+    # Ensure row limiting in a dialect-aware way (avoid invalid LIMIT on T-SQL)
+    original = _strip_trailing_semicolon(plan.sql)
+    has_limit = _has_any_limit(original)
+    if has_limit:
+        base_sql = original
+    elif deps.active_dialect == "tsql":
+        # Prefer OFFSET/FETCH when ORDER BY present; otherwise rely on fetchmany
+        if " order by " in original.lower():
+            base_sql = (
+                f"{original}\nOFFSET 0 ROWS FETCH NEXT {deps.row_limit} ROWS ONLY"
+            )
+        else:
+            base_sql = original
+    else:
+        base_sql = f"{original}\nLIMIT {deps.row_limit}"
+
+    # Normalize and transpile to the active dialect (handles T-SQL TOP, etc.)
+    trans = glot.auto_transpile_for_database(
+        SqlAutoTranspileRequest(sql=base_sql, target_dialect=cast(Dialect, deps.active_dialect))
     )
-    # If invalid, keep original SQL but add note
+    sql_to_run = trans.sql
+
+    # Validate final SQL for the dialect and collect notes
+    validation = glot.validate(
+        SqlValidationRequest(sql=sql_to_run, dialect=cast(Dialect, deps.active_dialect))
+    )
     notes: list[str] = []
+    if trans.notes:
+        notes.extend(trans.notes)
     if not validation.is_valid and validation.error_message:
         notes.append(validation.error_message)
-
-    # Make sure a LIMIT will be enforced downstream; we will also fetchmany
-    sql_to_run = plan.sql
-    if not _has_limit(plan.sql):
-        sql_to_run = f"{plan.sql}\nLIMIT {deps.row_limit}"
 
     # Execute
     elapsed_ms: float

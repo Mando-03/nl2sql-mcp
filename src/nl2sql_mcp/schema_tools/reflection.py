@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastmcp.utilities.logging import get_logger
-from geoalchemy2 import Geometry
+from geoalchemy2 import Geography, Geometry
 import sqlalchemy as sa
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.reflection import Inspector
@@ -25,8 +25,9 @@ from .utils import default_excluded_schemas
 # Logger
 _logger = get_logger("schema_explorer.reflection")
 
-# Not used directlybut must be imported for geoalchemy2
+# Not used directly but must be imported for geoalchemy2
 _ = Geometry
+_ = Geography
 
 
 class ReflectionAdapter:
