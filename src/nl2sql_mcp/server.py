@@ -15,11 +15,7 @@ from nl2sql_mcp.execute.mcp_tools import register_execute_query_tool
 from nl2sql_mcp.schema_tools.mcp_tools import register_intelligence_tools
 from nl2sql_mcp.services.config_service import ConfigService
 from nl2sql_mcp.services.schema_service_manager import SchemaServiceManager
-from nl2sql_mcp.sqlglot_tools import (
-    SqlglotService,
-    map_sqlalchemy_to_sqlglot,
-    register_sqlglot_tools,
-)
+from nl2sql_mcp.sqlglot_tools import SqlglotService
 
 # Load environment variables
 dotenv.load_dotenv()
@@ -54,18 +50,6 @@ mcp = FastMCP(
 # -- Tool Registration -------------------------------------------------------
 
 _sqlglot_service = SqlglotService()
-
-
-def _active_sqlglot_dialect() -> str:
-    """Resolve the current database dialect for sqlglot tools."""
-    manager = SchemaServiceManager.get_instance()
-    sa_name = manager.current_sqlalchemy_dialect_name()
-    if sa_name:
-        return map_sqlalchemy_to_sqlglot(sa_name)
-    return "sql"
-
-
-register_sqlglot_tools(mcp, _sqlglot_service, _active_sqlglot_dialect)  # type: ignore[arg-type]
 register_intelligence_tools(mcp)
 register_execute_query_tool(mcp, sqlglot_service=_sqlglot_service)
 

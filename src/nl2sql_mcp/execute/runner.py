@@ -16,10 +16,16 @@ import time
 
 from fastmcp.utilities.logging import get_logger
 import sqlalchemy as sa
+from sqlalchemy.exc import SQLAlchemyError
 
 from nl2sql_mcp.execute.models import ExecuteQueryResult
 from nl2sql_mcp.sqlglot_tools import SqlglotService
-from nl2sql_mcp.sqlglot_tools.models import Dialect, SqlAutoTranspileRequest, SqlValidationRequest
+from nl2sql_mcp.sqlglot_tools.models import (
+    Dialect,
+    SqlAutoTranspileRequest,
+    SqlErrorAssistRequest,
+    SqlValidationRequest,
+)
 
 _logger = get_logger(__name__)
 
@@ -108,7 +114,35 @@ def run_execute_flow(
     )
 
     # Policy and normalization
-    enforce_select_only(sql)
+    try:
+        enforce_select_only(sql)
+    except ValueError as exc:
+        # Non-SELECT attempted: return structured error result with guidance
+        assist_res = glot.assist_error(
+            SqlErrorAssistRequest(sql=sql, error_message=str(exc), dialect=active_dialect)
+        )
+        assist_notes: list[str] = []
+        if assist_res.likely_causes:
+            assist_notes.extend([f"Cause: {c}" for c in assist_res.likely_causes])
+        if assist_res.suggested_fixes:
+            assist_notes.extend([f"Fix: {f}" for f in assist_res.suggested_fixes])
+        return ExecuteQueryResult(
+            sql=strip_trailing_semicolon(sql),
+            execution={
+                "dialect": active_dialect,
+                "elapsed_ms": 0.0,
+                "row_limit": limits.row_limit,
+                "rows_returned": 0,
+                "truncated": False,
+            },
+            results=[],
+            validation_notes=["Only SELECT queries are permitted"],
+            recommended_next_steps=[],
+            status="error",
+            execution_error=str(exc),
+            assist_notes=assist_notes or None,
+        )
+
     base_sql = strip_trailing_semicolon(sql)
 
     trans = glot.auto_transpile_for_database(
@@ -132,14 +166,43 @@ def run_execute_flow(
     returned = 0
     truncated = False
     start = time.perf_counter()
-    with engine.connect() as conn:
-        result = conn.execute(sa.text(sql_to_run))
-        cols = list(result.keys())
-        map_result = result.mappings()
-        raw_rows = map_result.fetchmany(limits.row_limit + 1)  # sentinel to detect truncation
-        returned = min(len(raw_rows), limits.row_limit)
-        truncated = len(raw_rows) > limits.row_limit
-        rows = _truncate_rows(raw_rows, cols, limits.row_limit, limits.max_cell_chars)
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(sa.text(sql_to_run))
+            cols = list(result.keys())
+            map_result = result.mappings()
+            raw_rows = map_result.fetchmany(limits.row_limit + 1)  # sentinel to detect truncation
+            returned = min(len(raw_rows), limits.row_limit)
+            truncated = len(raw_rows) > limits.row_limit
+            rows = _truncate_rows(raw_rows, cols, limits.row_limit, limits.max_cell_chars)
+    except SQLAlchemyError as exc:
+        elapsed_ms = (time.perf_counter() - start) * 1000.0
+        _logger.warning("Execution error: %s", exc)
+        helpres = glot.assist_error(
+            SqlErrorAssistRequest(sql=sql_to_run, error_message=str(exc), dialect=active_dialect)
+        )
+        assist: list[str] = []
+        if helpres.likely_causes:
+            assist.extend([f"Cause: {c}" for c in helpres.likely_causes])
+        if helpres.suggested_fixes:
+            assist.extend([f"Fix: {f}" for f in helpres.suggested_fixes])
+
+        return ExecuteQueryResult(
+            sql=sql_to_run,
+            execution={
+                "dialect": active_dialect,
+                "elapsed_ms": elapsed_ms,
+                "row_limit": limits.row_limit,
+                "rows_returned": 0,
+                "truncated": False,
+            },
+            results=[],
+            validation_notes=notes,
+            recommended_next_steps=[],
+            status="error",
+            execution_error=str(exc),
+            assist_notes=assist or None,
+        )
     elapsed_ms = (time.perf_counter() - start) * 1000.0
     _logger.info(
         "Execution finished (elapsed_ms=%.1f, rows_returned=%d, truncated=%s)",
