@@ -11,11 +11,6 @@ from typing import Literal, cast
 
 import sqlalchemy as sa
 
-from nl2sql_mcp.builders import (
-    DatabaseSummaryBuilder,
-    QuerySchemaResultBuilder,
-    TableInfoBuilder,
-)
 from nl2sql_mcp.models import (
     ColumnSearchHit,
     DatabaseSummary,
@@ -27,6 +22,11 @@ from nl2sql_mcp.schema_tools.constants import RetrievalApproach
 from nl2sql_mcp.schema_tools.embeddings import Embedder
 from nl2sql_mcp.schema_tools.explorer import SchemaExplorer
 from nl2sql_mcp.schema_tools.query_engine import QueryEngine
+from nl2sql_mcp.schema_tools.response_builders import (
+    DatabaseSummaryBuilder,
+    QuerySchemaResultBuilder,
+    TableInfoBuilder,
+)
 from nl2sql_mcp.schema_tools.utils import tokens_from_text
 from nl2sql_mcp.services.config_service import ConfigService
 

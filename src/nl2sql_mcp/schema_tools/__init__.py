@@ -40,7 +40,6 @@ from .models import ColumnProfile, SchemaCard, SchemaExplorerConfig, TableProfil
 from .query_engine import QueryEngine
 
 __all__ = [
-    # Data models
     "ColumnProfile",
     "ColumnRole",
     "EmbeddingError",
