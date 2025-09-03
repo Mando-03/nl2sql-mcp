@@ -864,6 +864,7 @@ class DatabaseSummaryBuilder:
             common_patterns.append("Analytics: numeric metrics")
 
         return DatabaseSummary(
+            database_name=explorer.database_name,
             database_type=explorer.card.db_dialect,
             total_tables=len(explorer.card.tables),
             schemas=list(explorer.card.schemas),

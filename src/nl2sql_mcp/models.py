@@ -242,6 +242,9 @@ class QuerySchemaResult(BaseModel):
 class DatabaseSummary(BaseModel):
     """High-level database overview for SQL context."""
 
+    database_name: str | None = Field(
+        default=None, description="Database name/identifier if available"
+    )
     database_type: str = Field(description="Database dialect (PostgreSQL, MySQL, etc.)")
     total_tables: int = Field(description="Total number of tables")
     schemas: list[str] = Field(description="Schema names in the database")

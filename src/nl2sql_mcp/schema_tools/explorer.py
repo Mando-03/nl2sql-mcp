@@ -94,6 +94,21 @@ class SchemaExplorer:
         """
         return self._engine.dialect
 
+    @property
+    def database_name(self) -> str | None:
+        """Return the database name/identifier if available.
+
+        Uses the SQLAlchemy engine URL's `database` attribute when present.
+        Some dialects (e.g., SQLite in-memory) may not expose a stable name,
+        in which case this returns None.
+        """
+        try:
+            # SQLAlchemy URL.database may be None for some URLs/dialects.
+            name = self._engine.url.database  # type: ignore[attr-defined]
+        except AttributeError:
+            return None
+        return str(name) if name else None
+
     def _db_url_fingerprint(self, url: str) -> str:
         """Generate fingerprint for database URL.
 

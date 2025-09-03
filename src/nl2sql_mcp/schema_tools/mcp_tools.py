@@ -52,14 +52,23 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
                 )
             ),
         ],
+        *,
+        full_detail: Annotated[
+            bool,
+            Field(
+                description=(
+                    "When true, return an expanded plan: more relevant tables, more columns per "
+                    "table, a longer join plan with alternatives, broader group_by and filter "
+                    "candidates, and richer clarifications. When false, return a compact plan "
+                    "focused on top tables and a minimal join plan. Raw sample values are not "
+                    "included; use get_table_info for samples."
+                )
+            ),
+        ] = False,
         constraints: Annotated[
             dict[str, str | int | float | bool] | None,
             Field(description=("Optional constraints (e.g., time_range, region, metric).")),
         ] = None,
-        detail_level: Annotated[
-            Literal["standard", "full"],
-            Field(description=("Controls planning verbosity; 'full' returns more columns/joins.")),
-        ] = "standard",
         budget: Annotated[
             dict[str, int] | None,
             Field(
@@ -100,7 +109,7 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
             max_tables,
             approach=RetrievalApproach.COMBINED,
             alpha=0.7,
-            detail_level=detail_level,
+            detail_level=("full" if full_detail else "standard"),
             include_samples=False,
             max_sample_values=max_sample_values,
             max_columns_per_table=max_columns_per_table,
@@ -114,10 +123,11 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
         ctx: Context,
         *,
         include_subject_areas: Annotated[
-            bool, Field(description="Include structured subject area data when true")
+            bool,
+            Field(description="Include structured subject area data when true", default=False),
         ] = False,
         area_limit: Annotated[
-            int, Field(ge=1, description="Maximum number of subject areas to include")
+            int, Field(ge=1, description="Maximum number of subject areas to include", default=8)
         ] = 8,
     ) -> DatabaseSummary:
         """Summarize schemas and key areas to orient query planning."""
@@ -140,7 +150,8 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
         *,
         table_key: Annotated[str, Field(description="Fully qualified table name 'schema.table'")],
         include_samples: Annotated[
-            bool, Field(description="Include representative sample values for columns")
+            bool,
+            Field(description="Include representative sample values for columns", default=True),
         ] = True,
         column_role_filter: Annotated[
             list[Literal["metric", "date", "key", "category", "text"]] | None,
@@ -150,7 +161,8 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
             int,
             Field(
                 ge=0,
-                description=("Maximum samples per column when samples are included"),
+                description="Maximum samples per column when samples are included",
+                default=5,
             ),
         ] = 5,
         relationship_limit: Annotated[
@@ -280,7 +292,9 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
     async def get_subject_areas(  # pyright: ignore[reportUnusedFunction]
         ctx: Context,
         *,
-        limit: Annotated[int, Field(ge=1, description="Maximum number of areas to return")] = 12,
+        limit: Annotated[
+            int, Field(ge=1, default=12, description="Maximum number of areas to return")
+        ] = 12,
     ) -> list[SubjectAreaItem]:
         """List subject areas detected in the database."""
         _logger.info("Retrieving subject areas (limit=%d)", limit)
