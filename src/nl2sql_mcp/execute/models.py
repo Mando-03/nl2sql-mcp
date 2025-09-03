@@ -1,8 +1,7 @@
 """Models for the execute_query MCP tool.
 
 Provides a minimal, decision-ready result payload for direct SQL execution
-requests. Mirrors the execution/result envelope used by the ask_database agent
-without any LLM planning fields.
+requests, without any LLM planning fields.
 """
 
 from __future__ import annotations

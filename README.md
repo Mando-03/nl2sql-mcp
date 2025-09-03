@@ -1,6 +1,6 @@
 % NL2SQL MCP
 
-A natural‑language‑to‑SQL Model Context Protocol (MCP) server and focused agent that turns a user question into one safe, executable `SELECT` and returns concise, typed results. Built for type‑safety, testability, and cross‑database compatibility.
+A natural‑language‑to‑SQL Model Context Protocol (MCP) server that executes one safe, executable `SELECT` and returns concise, typed results. Built for type‑safety, testability, and cross‑database compatibility.
 
 - Server: FastMCP tools for schema discovery, SQL assistance, and query planning
 - Tool: `execute_query`—executes exactly one caller‑provided `SELECT` with strong safeguards
@@ -10,7 +10,7 @@ A natural‑language‑to‑SQL Model Context Protocol (MCP) server and focused 
 ## Features
 
 - **LLM‑ready schema intelligence:** Reflects your DB, profiles columns, builds FK graphs, discovers subject areas, and returns typed planning aids.
-- **Safe SQL agent:** Enforces `SELECT`‑only, normalizes dialect, validates with `sqlglot`, applies row and payload budgets.
+- **Safe SQL execution:** Enforces `SELECT`‑only, normalizes dialect, validates with `sqlglot`, applies row budgets and per‑cell truncation.
 - **Typed MCP tools:** Analyze query schema, search tables/columns, extract constraints, and expose SQL helpers (validate/transpile/optimize/metadata).
 - **Configurable & testable:** Dependency‑injected services with Pydantic models; pure, side‑effect‑free core APIs.
 
@@ -104,7 +104,6 @@ uv sync
 Key environment variables (via `.env`):
 - `NL2SQL_MCP_DATABASE_URL` (required)
 - Result budgets: `NL2SQL_MCP_ROW_LIMIT`, `NL2SQL_MCP_MAX_CELL_CHARS`
-- LLM config for agent: `NL2SQL_MCP_LLM_PROVIDER`, `NL2SQL_MCP_LLM_MODEL` (+ optional temperature/top_p/top_k/max tokens)
 
 
 ## Run

@@ -14,13 +14,13 @@ Service layer that centralizes configuration, schema exploration orchestration, 
 - Build SQLAlchemy engines with optional plugins (e.g., `geoalchemy2`) and MSSQL spatial type registration.
 - Create tuned `SchemaExplorerConfig` for query analysis.
 - Host a single `SchemaService` wired to a global `SchemaExplorer` and optional `Embedder`.
-- Provide readiness and error state to MCP tools and agents.
+- Provide readiness and error state to MCP tools.
 
 ## Key APIs
 
 - `ConfigService.get_database_url() -> str`
 - `ConfigService.create_database_engine(url: str) -> sa.Engine`
-- `ConfigService.get_llm_config() -> LLMConfig`
+  (LLM configuration removed with legacy agent deprecation.)
 - `ConfigService.get_query_analysis_config() -> SchemaExplorerConfig`
 - `SchemaService.analyze_query_schema(query, max_tables=5, ...) -> QuerySchemaResult`
 - `SchemaService.get_database_overview(...) -> DatabaseSummary`
@@ -43,9 +43,7 @@ Service layer that centralizes configuration, schema exploration orchestration, 
 ## Environment
 
 - `NL2SQL_MCP_DATABASE_URL` (required)
-- Optional LLM knobs via `ConfigService.get_llm_config()`:
-- `NL2SQL_MCP_LLM_PROVIDER`, `NL2SQL_MCP_LLM_MODEL` (only required if LLM agent tools are enabled)
-- `NL2SQL_MCP_LLM_TEMPERATURE`, `NL2SQL_MCP_LLM_TOP_P`, `NL2SQL_MCP_LLM_TOP_K`, `NL2SQL_MCP_LLM_MAX_OUTPUT_TOKENS`
+  (No LLM environment variables are required.)
 
 ## Notes
 

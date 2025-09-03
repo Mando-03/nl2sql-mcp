@@ -1,6 +1,6 @@
 # SQLGlot Tools: Dialect & SQL Helpers
 
-Typed, LLM‑friendly helpers around [sqlglot] used by the MCP server and agents. Exposes a small set of side‑effect‑free services and a tool registration module.
+Typed, LLM‑friendly helpers around [sqlglot] used by the MCP server. Exposes a small set of side‑effect‑free services and a tool registration module.
 
 ## Service API (`SqlglotService`)
 
@@ -40,4 +40,3 @@ Unit tests live in `tests/test_sqlglot_tools.py` and cover:
 - optimizer round‑trip
 - error assistance hints
 - auto‑transpile with dialect detection
-
