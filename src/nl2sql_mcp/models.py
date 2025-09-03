@@ -197,3 +197,5 @@ class InitStatus(BaseModel):
     started_at: float | None = None
     completed_at: float | None = None
     error_message: str | None = None
+    # Minimal descriptive text to help LLMs reason about progression
+    description: str | None = Field(default=None, description="Short status description")

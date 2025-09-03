@@ -193,14 +193,35 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
 
     @mcp.tool
     async def get_init_status(_ctx: Context) -> InitStatus:  # pyright: ignore[reportUnusedFunction]
-        """Get initialization status for schema service."""
+        """Get initialization status with descriptive progression for LLMs/UIs."""
         state = mgr.status()
+        deep = mgr.enrichment_status()
+
+        # Build a concise, LLM-friendly description
+        phase = state.phase.name
+        if phase in {"IDLE", "STARTING"}:
+            desc = "Starting: creating engine and launching background reflection."
+        elif phase == "RUNNING":
+            desc = "Initializing: reflecting schemas, sampling tables, and building initial graph."
+        elif phase == "READY":
+            if deep.get("in_progress"):
+                desc = "Ready; background enrichment in progress (relationships, communities)."
+            elif deep.get("completed_at"):
+                desc = "Ready; enrichment complete (relationships, communities)."
+            else:
+                desc = "Ready for queries."
+        elif phase == "FAILED":
+            desc = "Initialization failed; see error_message."
+        else:
+            desc = "Stopped."
+
         return InitStatus(
-            phase=state.phase.name,
+            phase=phase,
             attempts=state.attempts,
             started_at=state.started_at,
             completed_at=state.completed_at,
             error_message=state.error_message,
+            description=desc,
         )
 
     @mcp.tool

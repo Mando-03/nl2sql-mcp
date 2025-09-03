@@ -56,6 +56,12 @@ class SchemaServiceManager:
         self._thread_ready = threading.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._state = SchemaInitState(phase=SchemaInitPhase.IDLE)
+        # Post-READY enrichment state
+        self._enrich_in_progress = False
+        self._enrich_started_at: float | None = None
+        self._enrich_completed_at: float | None = None
+        self._enrich_error_message: str | None = None
+        self._enrich_thread: threading.Thread | None = None
 
     @classmethod
     def get_instance(cls) -> SchemaServiceManager:
@@ -119,6 +125,13 @@ class SchemaServiceManager:
                         completed_at=time.time(),
                         attempts=self._state.attempts + 1,
                     )
+                    # Kick off background enrichment after READY
+                    try:
+                        self._start_background_enrichment()
+                    except Exception:  # noqa: BLE001 - background best-effort
+                        self._logger.debug(
+                            "Enrichment background task could not start", exc_info=True
+                        )
                 finally:
                     self._thread_ready.set()
                     if self._loop is not None:
@@ -296,3 +309,40 @@ class SchemaServiceManager:
         global_embedder = type(self).GLOBAL_EMBEDDER
         self._schema_service = SchemaService(engine, global_explorer, global_embedder)
         self._logger.info("SchemaService instance created successfully")
+
+    # ---- background enrichment --------------------------------------------
+    def _start_background_enrichment(self) -> None:
+        """Start a post-READY enrichment pass in a daemon thread (exactly once)."""
+        if self._enrich_in_progress or self._enrich_completed_at is not None:
+            return
+        self._enrich_in_progress = True
+        self._enrich_started_at = time.time()
+
+        def _enricher() -> None:
+            self._logger.info("Starting schema enrichment in background…")
+            try:
+                explorer = type(self).GLOBAL_EXPLORER
+                if explorer is None:
+                    err = "GLOBAL_EXPLORER is None in enricher"
+                    raise RuntimeError(err)
+                explorer.enrich_index()
+                self._logger.info("Schema enrichment completed successfully")
+            except Exception as exc:  # noqa: BLE001
+                msg = str(exc)
+                self._enrich_error_message = msg
+                self._logger.warning("Schema enrichment failed: %s", msg, exc_info=True)
+            finally:
+                self._enrich_in_progress = False
+                self._enrich_completed_at = time.time()
+
+        self._enrich_thread = threading.Thread(target=_enricher, name="schema-enrich", daemon=True)
+        self._enrich_thread.start()
+
+    def enrichment_status(self) -> dict[str, object | None]:
+        """Return background enrichment status for observability."""
+        return {
+            "in_progress": self._enrich_in_progress,
+            "started_at": self._enrich_started_at,
+            "completed_at": self._enrich_completed_at,
+            "error": self._enrich_error_message,
+        }

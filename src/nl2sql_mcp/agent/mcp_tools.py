@@ -65,7 +65,7 @@ def register_ask_database_tool(
         schema = schema_service.analyze_query_schema(
             question,
             max_tables=5,
-            include_samples=False,
+            include_samples=True,
             max_sample_values=0,
             detail_level="standard",
             join_limit=8,

@@ -327,6 +327,27 @@ class SchemaExplorer:
         self.build_index()
         return True
 
+    def enrich_index(self) -> SchemaCard:
+        """Run a background enrichment pass to complete the index.
+
+        Switches reflection to full mode (FKs enabled, no table cap) and
+        rebuilds the schema card. Intended to be executed after initial READY
+        to enrich relationships and communities.
+
+        Returns:
+            Rebuilt SchemaCard with full relationships and metrics.
+        """
+        # Temporarily switch reflector to full reflection
+        try:
+            self._reflector.fast_startup = False
+            self._reflector.max_tables_at_startup = None
+            return self.build_index()
+        finally:
+            # Leave it in full mode after enrichment to avoid reintroducing caps
+            # (no-op restore). Kept for clarity and potential future use.
+            self._reflector.fast_startup = False
+            self._reflector.max_tables_at_startup = None
+
     def needs_rebuild(self) -> bool:
         """Check if the schema has changed and needs rebuilding.
 
