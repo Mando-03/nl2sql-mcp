@@ -1,15 +1,10 @@
 """nl2sql-mcp package for natural language to SQL conversion.
 
-Provides Model Context Protocol server for converting natural language
-queries into SQL statements with intelligent database schema analysis.
+Provides Model Context Protocol (FastMCP) server capabilities for converting
+natural-language queries into SQL with intelligent database schema analysis.
 """
 
-from .builders import (
-    DatabaseSummaryBuilder,
-    QuerySchemaResultBuilder,
-    TableInfoBuilder,
-)
-from .models import (
+from nl2sql_mcp.models import (
     ColumnDetail,
     DatabaseSummary,
     JoinExample,
@@ -18,13 +13,9 @@ from .models import (
     TableInfo,
     TableSummary,
 )
-from .services import ConfigService, SchemaService
+from nl2sql_mcp.services import ConfigService, SchemaService
 
 __all__ = [  # noqa: RUF022
-    # Builders
-    "DatabaseSummaryBuilder",
-    "QuerySchemaResultBuilder",
-    "TableInfoBuilder",
     # Core models
     "ColumnDetail",
     "DatabaseSummary",
