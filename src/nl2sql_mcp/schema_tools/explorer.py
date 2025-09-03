@@ -25,7 +25,6 @@ from nl2sql_mcp.models import (
 )
 
 from .constants import Constants
-from .embeddings import Embedder
 from .graph import Classifier, GraphBuilder
 from .models import ColumnProfile, SchemaCard, SchemaExplorerConfig, TableProfile
 from .profiling import Profiler
@@ -71,20 +70,16 @@ class SchemaExplorer:
 
         # Component initialization
         self._reflector = ReflectionAdapter(
-            self._engine, config.include_schemas, config.exclude_schemas
+            self._engine,
+            config.include_schemas,
+            config.exclude_schemas,
+            fast_startup=config.fast_startup,
+            max_tables_at_startup=config.max_tables_at_startup,
         )
         self._sampler = Sampler(self._engine, config.per_table_rows, config.sample_timeout)
         self._profiler = Profiler()
         self._graph_builder = GraphBuilder()
         self._classifier = Classifier()
-
-        # Optional embedding components
-        try:
-            self._embedder = Embedder(model_name=config.model_name)
-            _logger.info("Initialized embedder with model: %s", config.model_name)
-        except RuntimeError as e:
-            _logger.warning("Embeddings disabled: %s", e)
-            self._embedder = None
 
         # State
         self.card: SchemaCard | None = schema_card
@@ -188,16 +183,7 @@ class SchemaExplorer:
         # Step 3: Data sampling and profiling
         _logger.info("Starting data sampling and profiling...")
         sampling_start = now()
-        for table_key, table_profile in tables.items():
-            column_names = [col.name for col in table_profile.columns]
-            sample_data = self._sampler.sample_table(
-                table_profile.schema, table_profile.name, column_names
-            )
-            tables[table_key] = self._profiler.profile_table(
-                table_profile,
-                sample_data,
-                value_constraint_threshold=self.config.value_constraint_threshold,
-            )
+        self._sample_and_profile_tables(tables)
         timings["sample_profile"] = now() - sampling_start
 
         # Step 4: Graph analysis and community detection
@@ -287,6 +273,39 @@ class SchemaExplorer:
 
         _logger.info("Schema index built successfully in %.2fs", timings["build_index_total"])
         return self.card
+
+    # ---- internals ---------------------------------------------------------
+
+    def _sample_and_profile_tables(self, tables: dict[str, TableProfile]) -> None:
+        """Sample and profile tables using a single streaming connection.
+
+        Keeps logic out of build_index to reduce branching and improve readability.
+        """
+        with self._engine.connect() as _conn:
+            streaming_conn = _conn.execution_options(stream_results=True)
+            for table_profile in list(tables.values()):
+                columns_ordered = table_profile.columns
+                if self.config.max_sampled_columns:
+                    columns_ordered = columns_ordered[: self.config.max_sampled_columns]
+
+                def _is_lob(type_str: str) -> bool:
+                    t = (type_str or "").lower()
+                    return any(
+                        hint in t
+                        for hint in ("blob", "clob", "bytea", "varbinary", "image", "ntext")
+                    )
+
+                column_names = [col.name for col in columns_ordered if not _is_lob(col.type)]
+
+                sample_data = self._sampler.sample_table(
+                    table_profile.schema, table_profile.name, column_names, conn=streaming_conn
+                )
+                updated = self._profiler.profile_table(
+                    table_profile,
+                    sample_data,
+                    value_constraint_threshold=self.config.value_constraint_threshold,
+                )
+                tables[f"{updated.schema}.{updated.name}"] = updated
 
     def update_index_if_changed(self) -> bool:
         """Update schema index if the database schema has changed.

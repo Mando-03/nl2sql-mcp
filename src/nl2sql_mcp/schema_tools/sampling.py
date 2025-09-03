@@ -16,7 +16,7 @@ from typing import Any
 from fastmcp.utilities.logging import get_logger
 import pandas as pd
 import sqlalchemy as sa
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.sql.elements import ColumnElement
 
 # Logger
@@ -52,7 +52,14 @@ class Sampler:
         # Avoid dialect-specific SQL; rely on SQLAlchemy Core to render
         # appropriate LIMIT/TOP/OFFSET syntax per dialect.
 
-    def sample_table(self, schema: str, table: str, cols: list[str]) -> pd.DataFrame:
+    def sample_table(
+        self,
+        schema: str,
+        table: str,
+        cols: list[str],
+        *,
+        conn: Connection | None = None,
+    ) -> pd.DataFrame:
         """Sample data from a database table.
 
         Executes a sampling query against the specified table and returns
@@ -84,15 +91,35 @@ class Sampler:
         _logger.debug("Sampling %s.%s with query: %s", schema, table, sql_query)
 
         try:
-            with self.engine.connect() as conn:
-                # Configure connection for streaming to handle large results efficiently
-                streaming_conn = conn.execution_options(stream_results=True)
-
-                # Execute the query and return as DataFrame
-                return pd.read_sql(sql_query, streaming_conn)
+            # Use provided connection (preferred for amortized cost) or open a new one
+            if conn is None:
+                with self.engine.connect() as _conn:
+                    streaming_conn = _conn.execution_options(stream_results=True)
+                    self._apply_statement_timeout(streaming_conn)
+                    return pd.read_sql(sql_query, streaming_conn)
+            else:
+                self._apply_statement_timeout(conn)
+                return pd.read_sql(sql_query, conn)
 
         except Exception as e:  # noqa: BLE001 - Return empty DataFrame on any error
             _logger.debug("Sampling failed for %s.%s: %s", schema, table, e)
 
             # Return empty DataFrame with correct column structure on failure
             return pd.DataFrame(columns=cols)  # type: ignore[call-overload]
+
+    # ---- internals ---------------------------------------------------------
+    def _apply_statement_timeout(self, conn: Connection) -> None:
+        """Apply a per-query timeout for supported dialects.
+
+        Currently enables Postgres SET LOCAL statement_timeout when inside a
+        transaction block. For other dialects, this is a no-op.
+        """
+        try:
+            dialect = self.engine.dialect.name
+            if dialect == "postgresql":
+                # Use milliseconds as required by PostgreSQL; apply at session level
+                ms = max(1, int(self.timeout_sec * 1000))
+                conn.execute(sa.text("SET statement_timeout = :ms"), {"ms": ms})
+        except Exception as e:  # noqa: BLE001 - best-effort guard
+            # Best-effort; ignore if not supported, but record at debug level
+            _logger.debug("Could not apply statement timeout: %s", e)

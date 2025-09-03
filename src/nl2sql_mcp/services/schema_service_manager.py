@@ -284,9 +284,8 @@ class SchemaServiceManager:
         with engine.connect() as conn:
             conn.execute(sa.text("SELECT 1"))
 
-        # Ensure global components are available
+        # Ensure global explorer is available; defer embedder until first use
         self._ensure_global_explorer(engine)
-        self._ensure_global_embedder()
 
         # Create SchemaService instance with the global explorer and embedder
         global_explorer = type(self).GLOBAL_EXPLORER

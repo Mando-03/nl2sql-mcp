@@ -44,6 +44,9 @@ class ReflectionAdapter:
         engine: Engine,
         include_schemas: list[str] | None = None,
         exclude_schemas: list[str] | None = None,
+        *,
+        fast_startup: bool = False,
+        max_tables_at_startup: int | None = None,
     ) -> None:
         """Initialize the reflection adapter.
 
@@ -56,6 +59,8 @@ class ReflectionAdapter:
         self.inspector: Inspector = sa.inspect(engine)
         self.include_schemas = include_schemas
         self.exclude_schemas = exclude_schemas
+        self.fast_startup = fast_startup
+        self.max_tables_at_startup = max_tables_at_startup
 
     def list_schemas(self) -> list[str]:
         """List database schemas with filtering applied.
@@ -139,6 +144,9 @@ class ReflectionAdapter:
             error_msg = f"Failed to list database schemas: {e}"
             raise ReflectionError(error_msg) from e
 
+        processed_tables = 0
+        max_tables = self.max_tables_at_startup if self.max_tables_at_startup else None
+
         for schema in schemas_to_process:
             _logger.debug("Reflecting schema: %s", schema)
 
@@ -152,6 +160,14 @@ class ReflectionAdapter:
 
             for table in tables:
                 _logger.debug("Reflecting table: %s.%s", schema, table)
+
+                # Respect global startup cap on number of tables reflected
+                if max_tables is not None and processed_tables >= max_tables:
+                    _logger.info(
+                        "Reached reflection cap (max_tables_at_startup=%s); stopping early",
+                        max_tables,
+                    )
+                    return payload
 
                 # Get column information
                 try:
@@ -168,24 +184,10 @@ class ReflectionAdapter:
                     _logger.debug("Cannot get PK for %s.%s: %s", schema, table, e)
                     primary_key_columns = []
 
-                # Get foreign key constraints
-                foreign_keys = []
-                try:
-                    fk_constraints = self.inspector.get_foreign_keys(table, schema=schema)
-                    for fk in fk_constraints:
-                        ref_schema = fk.get("referred_schema") or schema
-                        ref_table = fk.get("referred_table")
-
-                        # Process each column in the foreign key
-                        constrained_cols = fk.get("constrained_columns", [])
-                        referred_cols = fk.get("referred_columns", [])
-
-                        for local_col, ref_col in zip(
-                            constrained_cols, referred_cols, strict=False
-                        ):
-                            foreign_keys.append((local_col, f"{ref_schema}.{ref_table}", ref_col))
-                except Exception as e:  # noqa: BLE001 - Continue without FK info
-                    _logger.debug("Cannot get FKs for %s.%s: %s", schema, table, e)
+                # Get foreign key constraints (skip on fast startup for speed)
+                foreign_keys: list[tuple[str, str, str]] = []
+                if not self.fast_startup:
+                    foreign_keys = self._get_foreign_keys(schema, table)
 
                 # Get table comment if enabled
                 table_comment = None
@@ -212,4 +214,25 @@ class ReflectionAdapter:
                     "comment": table_comment,
                 }
 
+                processed_tables += 1
+
         return payload
+
+    # ---- internals ---------------------------------------------------------
+    def _get_foreign_keys(self, schema: str, table: str) -> list[tuple[str, str, str]]:
+        """Fetch foreign key relationships for a table with robust fallbacks."""
+        try:
+            fk_constraints = self.inspector.get_foreign_keys(table, schema=schema)
+        except Exception as e:  # noqa: BLE001 - Continue without FK info
+            _logger.debug("Cannot get FKs for %s.%s: %s", schema, table, e)
+            return []
+
+        fks: list[tuple[str, str, str]] = []
+        for fk in fk_constraints:
+            ref_schema = fk.get("referred_schema") or schema
+            ref_table = fk.get("referred_table")
+            constrained_cols = fk.get("constrained_columns", [])
+            referred_cols = fk.get("referred_columns", [])
+            for local_col, ref_col in zip(constrained_cols, referred_cols, strict=False):
+                fks.append((local_col, f"{ref_schema}.{ref_table}", ref_col))
+        return fks

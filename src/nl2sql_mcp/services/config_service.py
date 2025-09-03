@@ -108,6 +108,10 @@ class ConfigService:
             min_area_size=2,
             merge_archive_areas=True,
             value_constraint_threshold=20,
+            # Startup performance knobs
+            fast_startup=True,
+            max_tables_at_startup=300,
+            max_sampled_columns=15,
         )
 
     # Unused specialized config helpers removed to reduce API surface

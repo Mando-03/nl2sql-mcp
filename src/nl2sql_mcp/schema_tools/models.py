@@ -233,6 +233,9 @@ class SchemaExplorerConfig:
         min_area_size: Minimum size for subject area communities
         merge_archive_areas: Whether to merge archive-dominated areas
         value_constraint_threshold: Max distinct values to store for constraint analysis
+        fast_startup: Enable faster, shallow first build of the index
+        max_tables_at_startup: Optional cap on number of tables reflected at startup
+        max_sampled_columns: Maximum number of columns to sample per table
     """
 
     include_schemas: list[str] | None = None
@@ -246,3 +249,7 @@ class SchemaExplorerConfig:
     min_area_size: int = Constants.DEFAULT_MIN_AREA_SIZE
     merge_archive_areas: bool = True
     value_constraint_threshold: int = Constants.DEFAULT_VALUE_CONSTRAINT_THRESHOLD
+    # Startup performance tunables
+    fast_startup: bool = False
+    max_tables_at_startup: int | None = None
+    max_sampled_columns: int = 20
