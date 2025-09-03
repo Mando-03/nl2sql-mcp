@@ -3,7 +3,7 @@
 A natural‑language‑to‑SQL Model Context Protocol (MCP) server and focused agent that turns a user question into one safe, executable `SELECT` and returns concise, typed results. Built for type‑safety, testability, and cross‑database compatibility.
 
 - Server: FastMCP tools for schema discovery, SQL assistance, and query planning
-- Agent: `ask_database`—plans and executes exactly one `SELECT` with strong safeguards
+- Tool: `execute_query`—executes exactly one caller‑provided `SELECT` with strong safeguards
 - Engines: Works with SQLAlchemy; validated/transpiled via `sqlglot`
 
 
@@ -33,7 +33,7 @@ graph TB
     QE --> MCP[MCP Tools]
   end
 
-  MCP --> AGENT[ask_database]
+  MCP --> EXEC[execute_query]
 ```
 
 - Phase 1 builds a `SchemaCard` with subject areas, table/column profiles, constraints, and graph metrics.
@@ -42,14 +42,14 @@ graph TB
 
 ## Modules
 
-- `src/nl2sql_mcp/agent/` — ask_database agent and models (see module README)
+- `src/nl2sql_mcp/execute/` — direct execution tool (execute_query)
 - `src/nl2sql_mcp/schema_tools/` — schema intelligence MCP tools (see module README)
 - `src/nl2sql_mcp/services/` — configuration, schema service, and lifecycle manager
 - `src/nl2sql_mcp/sqlglot_tools/` — SQL validation/transpile/metadata MCP tools
 
 For deeper detail, see:
 
-- `src/nl2sql_mcp/agent/README.md`
+- `src/nl2sql_mcp/execute/` (module docs inline)
 - `src/nl2sql_mcp/schema_tools/README.md`
 - `src/nl2sql_mcp/services/README.md`
 - `src/nl2sql_mcp/sqlglot_tools/README.md`
@@ -74,22 +74,19 @@ SQLGlot tools:
 - `sql_assist_from_error(sql, error_message)`
 
 
-## Agent: ask_database
+## Tool: execute_query
 
-Focused agent that proposes exactly one `SELECT` and executes it safely.
+Executes exactly one caller‑provided `SELECT` safely and returns a typed payload.
 
 Flow:
-1. Schema focus with `SchemaService.analyze_query_schema()`
-2. Plan one `SELECT` (PydanticAI `Agent[AgentDeps, LlmSqlPlan]`)
-3. Safety guards (`SELECT`‑only, strip `;`)
-4. Dialect: `SqlglotService.auto_transpile_for_database()` and `validate()`
-5. Execute via SQLAlchemy with truncation budgets
-6. Return typed `AskDatabaseResult` with notes and next‑step hints
+1. Safety guards (`SELECT`‑only; strip trailing `;`).
+2. Dialect: `SqlglotService.auto_transpile_for_database()` and `validate()`.
+3. Execute via SQLAlchemy with truncation budgets.
+4. Return typed `ExecuteQueryResult` with notes and next‑step hints.
 
 Safeguards:
-- Only `SELECT` allowed; no mutations
-- Deterministic truncation by row count and per‑cell character limit
-- Payload size budgets to protect downstream consumers
+- Only `SELECT` allowed; no mutations.
+- Deterministic truncation by row count and per‑cell character limit.
 
 
 ## Install
@@ -106,7 +103,7 @@ uv sync
 
 Key environment variables (via `.env`):
 - `NL2SQL_MCP_DATABASE_URL` (required)
-- Result budgets: `NL2SQL_MCP_ROW_LIMIT`, `NL2SQL_MCP_MAX_CELL_CHARS`, `NL2SQL_MCP_MAX_RESULT_BYTES`
+- Result budgets: `NL2SQL_MCP_ROW_LIMIT`, `NL2SQL_MCP_MAX_CELL_CHARS`
 - LLM config for agent: `NL2SQL_MCP_LLM_PROVIDER`, `NL2SQL_MCP_LLM_MODEL` (+ optional temperature/top_p/top_k/max tokens)
 
 
@@ -129,8 +126,8 @@ uv run python scripts/test_intelligence_harness.py "show sales by region"
 # SQLGlot helpers demo
 uv run python scripts/test_sqlglot_harness.py "select top 10 * from dbo.Customers"
 
-# ask_database agent demo
-uv run python scripts/test_agent_harness.py "top 5 customers by total order amount last 30 days"
+# execute_query demo
+NL2SQL_MCP_EXAMPLE_SQL='SELECT 1 AS one' uv run python scripts/test_execute_query_harness.py
 ```
 
 FastMCP documentation: https://gofastmcp.com/llms.txt
@@ -169,4 +166,3 @@ Validation/transpile support via `sqlglot` for:
 
 - Embeddings are optional at runtime; retrieval falls back to lexical methods.
 - The schema service is initialized once per process and exposes readiness state for clients.
-

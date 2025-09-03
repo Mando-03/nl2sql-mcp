@@ -44,11 +44,10 @@ Service layer that centralizes configuration, schema exploration orchestration, 
 
 - `NL2SQL_MCP_DATABASE_URL` (required)
 - Optional LLM knobs via `ConfigService.get_llm_config()`:
-  - `NL2SQL_MCP_LLM_PROVIDER`, `NL2SQL_MCP_LLM_MODEL` (required for agent usage)
-  - `NL2SQL_MCP_LLM_TEMPERATURE`, `NL2SQL_MCP_LLM_TOP_P`, `NL2SQL_MCP_LLM_TOP_K`, `NL2SQL_MCP_LLM_MAX_OUTPUT_TOKENS`
+- `NL2SQL_MCP_LLM_PROVIDER`, `NL2SQL_MCP_LLM_MODEL` (only required if LLM agent tools are enabled)
+- `NL2SQL_MCP_LLM_TEMPERATURE`, `NL2SQL_MCP_LLM_TOP_P`, `NL2SQL_MCP_LLM_TOP_K`, `NL2SQL_MCP_LLM_MAX_OUTPUT_TOKENS`
 
 ## Notes
 
 - All public methods are typed and designed for testability; pure logic is separated from I/O where feasible.
 - Embedding usage is optional at runtime; retrieval falls back to lexical methods when disabled.
-

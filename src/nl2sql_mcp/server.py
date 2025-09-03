@@ -11,7 +11,7 @@ import dotenv
 from fastmcp import FastMCP
 from fastmcp.utilities.logging import get_logger
 
-from nl2sql_mcp.agent.mcp_tools import register_ask_database_tool
+from nl2sql_mcp.execute.mcp_tools import register_execute_query_tool
 from nl2sql_mcp.schema_tools.mcp_tools import register_intelligence_tools
 from nl2sql_mcp.services.config_service import ConfigService
 from nl2sql_mcp.services.schema_service_manager import SchemaServiceManager
@@ -67,7 +67,7 @@ def _active_sqlglot_dialect() -> str:
 
 register_sqlglot_tools(mcp, _sqlglot_service, _active_sqlglot_dialect)  # type: ignore[arg-type]
 register_intelligence_tools(mcp)
-register_ask_database_tool(mcp, sqlglot_service=_sqlglot_service)
+register_execute_query_tool(mcp, sqlglot_service=_sqlglot_service)
 
 
 def main() -> None:
@@ -75,9 +75,8 @@ def main() -> None:
     try:
         # Fail fast if required environment variables are missing
         try:
-            # Both of these calls validate env and will raise on missing values
+            # Validate database configuration early; LLM config no longer required
             ConfigService.get_database_url()
-            ConfigService.get_llm_config()
         except ValueError:
             _logger.exception("Startup configuration error")
             raise SystemExit(1) from None
