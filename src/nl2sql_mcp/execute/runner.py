@@ -202,6 +202,7 @@ def run_execute_flow(
             status="error",
             execution_error=str(exc),
             assist_notes=assist or None,
+            next_action="refine_plan",
         )
     elapsed_ms = (time.perf_counter() - start) * 1000.0
     _logger.info(
@@ -216,6 +217,12 @@ def run_execute_flow(
         next_steps.append(
             "Results truncated; add WHERE filters or ask for aggregation/pagination."
         )
+    # Build a short result summary for the agent
+    summary = f"{returned} row(s), {len(cols)} column(s)"
+    if truncated:
+        summary += "; truncated"
+
+    next_action = "refine_plan" if truncated else None
 
     return ExecuteQueryResult(
         sql=sql_to_run,
@@ -230,4 +237,6 @@ def run_execute_flow(
         validation_notes=notes,
         recommended_next_steps=next_steps,
         status="ok",
+        next_action=next_action,  # advise refinement on truncation
+        result_sample_summary=summary,
     )

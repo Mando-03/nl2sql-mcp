@@ -10,6 +10,99 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+# -----------------------
+# MCP Request Models
+# -----------------------
+
+
+class PlanQueryRequest(BaseModel):
+    """Plan a SQL solution for a natural-language request."""
+
+    request: str = Field(
+        description=(
+            "User's question or goal in natural language. Example: "
+            "'Total revenue by month for 2024 for the US region.'"
+        )
+    )
+    constraints: dict[str, str | int | float | bool] | None = Field(
+        default=None,
+        description=(
+            "Optional constraints such as time window, dimensions, metrics, or filters. "
+            "Example: {time_range: '2024-01-01..2024-12-31', region: 'US', metric: 'revenue'}"
+        ),
+    )
+    detail_level: Literal["standard", "full"] = Field(
+        default="standard",
+        description=(
+            "Controls verbosity of planning output. 'full' returns more columns and joins."
+        ),
+    )
+    budget: dict[str, int] | None = Field(
+        default=None,
+        description=(
+            "Optional response-size caps. Keys: tables, columns_per_table, sample_values. "
+            "Example: {tables: 5, columns_per_table: 20, sample_values: 3}."
+        ),
+    )
+
+
+class DatabaseOverviewRequest(BaseModel):
+    """Get a high-level overview to orient planning."""
+
+    include_subject_areas: bool = Field(
+        default=False, description="Include structured subject area data when true"
+    )
+    area_limit: int = Field(
+        default=8, ge=1, description="Maximum number of subject areas to include"
+    )
+
+
+class TableInfoRequest(BaseModel):
+    """Explain a table in business and SQL terms."""
+
+    table_key: str = Field(description="Fully qualified table name 'schema.table'")
+    include_samples: bool = Field(
+        default=True, description="Include representative sample values for columns"
+    )
+    column_role_filter: list[Literal["metric", "date", "key", "category", "text"]] | None = Field(
+        default=None,
+        description="If provided, only return columns with these business roles",
+    )
+    max_sample_values: int = Field(
+        default=5, ge=0, description="Maximum samples per column when samples are included"
+    )
+    relationship_limit: int | None = Field(
+        default=None, ge=0, description="Limit the number of relationships returned"
+    )
+
+
+class ExecuteQueryRequest(BaseModel):
+    """Execute a SELECT safely with validation and dialect handling."""
+
+    sql: str = Field(
+        description=(
+            "SQL statement to execute. SELECT-only; non-SELECT returns a structured error."
+        )
+    )
+
+
+# Debug-only request models (gated tools)
+class FindTablesRequest(BaseModel):
+    query: str = Field(description="Intent/keywords to locate relevant tables")
+    limit: int = Field(default=10, ge=1, le=50, description="Maximum number of hits")
+    approach: Literal["combo", "lexical", "emb_table", "emb_column"] = Field(
+        default="combo", description="Retrieval strategy"
+    )
+    alpha: float = Field(default=0.7, ge=0.0, le=1.0, description="Blend weight for combo")
+
+
+class FindColumnsRequest(BaseModel):
+    keyword: str = Field(description="Keyword to match columns")
+    limit: int = Field(default=25, ge=1, le=200, description="Maximum number of hits")
+    by_table: str | None = Field(
+        default=None, description="Restrict search to a specific 'schema.table'"
+    )
+
 
 class SubjectAreaData(BaseModel):
     """Detailed data for a specific subject area."""
@@ -111,6 +204,38 @@ class QuerySchemaResult(BaseModel):
     selected_columns: list[SelectedColumn] = Field(
         default_factory=list,
         description="Optional suggested select list",
+    )
+    # LLM-first planning outputs
+    draft_sql: str | None = Field(
+        default=None,
+        description="Optional draft SELECT statement assembled from the plan",
+    )
+    next_action: (
+        Literal[
+            "execute_query",
+            "request_clarification",
+            "inspect_table",
+            "refine_plan",
+        ]
+        | None
+    ) = Field(
+        default=None,
+        description="Suggested next step based on confidence and ambiguities",
+    )
+    clarifications: list[str] = Field(
+        default_factory=list,
+        description="Concrete questions to resolve ambiguities before execution",
+    )
+    assumptions: list[str] = Field(
+        default_factory=list,
+        description="Assumptions the planner made that the agent may confirm",
+    )
+    confidence: float | None = Field(
+        default=None,
+        description="Heuristic confidence 0..1 that the plan matches the request",
+    )
+    status: Literal["ok", "needs_input", "error"] = Field(
+        default="ok", description="Whether planning is ready, needs input, or failed"
     )
 
 

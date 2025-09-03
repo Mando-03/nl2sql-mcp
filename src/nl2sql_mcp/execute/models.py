@@ -39,3 +39,22 @@ class ExecuteQueryResult(BaseModel):
     assist_notes: list[str] | None = Field(
         default=None, description="Optional guidance when an error occurred"
     )
+    next_action: (
+        Literal[
+            "refine_plan",
+            "plan_query_for_intent",
+            "execute_query",
+        ]
+        | None
+    ) = Field(
+        default=None,
+        description=(
+            "Suggested next step after execution (e.g., refine plan on errors or truncation)"
+        ),
+    )
+    result_sample_summary: str | None = Field(
+        default=None,
+        description=(
+            "One-line summary of the result set to help decide whether to paginate or aggregate"
+        ),
+    )

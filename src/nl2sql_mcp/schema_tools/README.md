@@ -445,10 +445,59 @@ class SchemaExplorerConfig:
 ## Key Features
 
 ### MCP Tools (Primary Interface)
-- **`analyze_query_schema(query, max_tables=5)`**: Find relevant tables and schema info for a specific query
-- **`get_database_overview()`**: High-level database overview with business context
-- **`get_table_info(table_key, include_samples=True)`**: Detailed table information optimized for SQL development
-- **Typed responses**: All tools return structured Pydantic models for reliable LLM consumption
+- `get_init_status()` — Check readiness/progress.
+- `get_database_overview(req: DatabaseOverviewRequest)` — High-level orientation with optional subject areas.
+- `plan_query_for_intent(req: PlanQueryRequest)` — Intent-first planning that returns minimal schema context, a join plan, clarifications, confidence, and a `draft_sql` for immediate execution.
+- `get_table_info(req: TableInfoRequest)` — Detailed table information optimized for SQL development.
+- `execute_query(req: ExecuteQueryRequest)` — Safe SELECT execution with validation and dialect handling.
+
+Optional (debug): `find_tables(FindTablesRequest)`, `find_columns(FindColumnsRequest)` when `NL2SQL_MCP_DEBUG_TOOLS=1`.
+
+Typed responses use Pydantic models for reliable LLM consumption.
+
+### Usage Examples (Request Models)
+
+- PlanQueryRequest
+  ```json
+  {
+    "request": "Monthly active users for 2024 by region",
+    "constraints": {"time_range": "2024-01-01..2024-12-31", "metric": "mau"},
+    "detail_level": "standard",
+    "budget": {"tables": 5, "columns_per_table": 20, "sample_values": 3}
+  }
+  ```
+
+- DatabaseOverviewRequest
+  ```json
+  {"include_subject_areas": true, "area_limit": 8}
+  ```
+
+- TableInfoRequest
+  ```json
+  {
+    "table_key": "analytics.events",
+    "include_samples": true,
+    "column_role_filter": ["key", "date"],
+    "max_sample_values": 5
+  }
+  ```
+
+- ExecuteQueryRequest
+  ```json
+  {
+    "sql": "SELECT region, COUNT(*) AS mau\nFROM analytics.events\nWHERE event_date BETWEEN DATE '2024-01-01' AND DATE '2024-12-31'\nGROUP BY region\nORDER BY mau DESC"
+  }
+  ```
+
+- FindTablesRequest (debug only)
+  ```json
+  {"query": "orders by customer", "limit": 8, "approach": "combo", "alpha": 0.7}
+  ```
+
+- FindColumnsRequest (debug only)
+  ```json
+  {"keyword": "created_at", "limit": 20, "by_table": "sales.orders"}
+  ```
 
 ### Schema Analysis Engine
 - **Engine-agnostic** via SQLAlchemy (Postgres, SQL Server, MySQL, Oracle, Snowflake, …)

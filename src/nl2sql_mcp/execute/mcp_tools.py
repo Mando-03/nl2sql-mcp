@@ -12,6 +12,7 @@ from fastmcp.utilities.logging import get_logger
 
 from nl2sql_mcp.execute.models import ExecuteQueryResult
 from nl2sql_mcp.execute.runner import ExecutionLimits, run_execute_flow
+from nl2sql_mcp.models import ExecuteQueryRequest
 from nl2sql_mcp.schema_tools.mcp_tools import MAX_QUERY_DISPLAY
 from nl2sql_mcp.services.config_service import ConfigService
 from nl2sql_mcp.services.schema_service_manager import SchemaServiceManager
@@ -23,15 +24,20 @@ _logger = get_logger(__name__)
 def register_execute_query_tool(
     mcp: FastMCP, *, sqlglot_service: SqlglotService | None = None
 ) -> None:
-    """Register the `execute_query` MCP tool on the given server instance."""
+    """Register a safe SQL execution tool.
+
+    Executes a SELECT with automatic dialect handling, SQL validation, and
+    truncation safeguards; returns typed results and actionable guidance.
+    """
 
     mgr = SchemaServiceManager.get_instance()
     glot = sqlglot_service or SqlglotService()
 
     @mcp.tool
-    async def execute_query(ctx: Context, sql: str) -> ExecuteQueryResult:  # pyright: ignore[reportUnusedFunction]
-        """Execute a caller-provided SELECT query with safety and validation."""
+    async def execute_query(ctx: Context, req: ExecuteQueryRequest) -> ExecuteQueryResult:  # pyright: ignore[reportUnusedFunction]
+        """Safely execute a SELECT and return results with guidance for next steps."""
 
+        sql = req.sql
         preview = sql[:MAX_QUERY_DISPLAY] + ("..." if len(sql) > MAX_QUERY_DISPLAY else "")
         _logger.info("execute_query: %s", preview)
 

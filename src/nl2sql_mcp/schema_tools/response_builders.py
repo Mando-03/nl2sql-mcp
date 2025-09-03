@@ -39,7 +39,7 @@ class QuerySchemaResultBuilder:
     """Builder for QuerySchemaResult objects."""
 
     @staticmethod
-    def build(  # noqa: PLR0913 - explicit detail controls improve LLM ergonomics
+    def build(  # noqa: PLR0913, PLR0912 - explicit detail controls improve LLM ergonomics
         query: str,
         selected_tables: list[str],
         explorer: SchemaExplorer,
@@ -114,6 +114,82 @@ class QuerySchemaResultBuilder:
             main_table, dims_sorted, explorer, max_items=8
         )
 
+        # Heuristic clarifications & confidence
+        clarifications: list[str] = []
+        assumptions: list[str] = []
+
+        if main_table is None:
+            clarifications.append(
+                "Which business entity should anchor this query (primary table)?"
+            )
+        if len(selected_tables) > 1 and not join_plan:
+            clarifications.append("Confirm how these tables are related or provide join keys.")
+        if not selected_columns:
+            clarifications.append(
+                "Which metrics or fields should be selected and aggregated, if any?"
+            )
+
+        confidence = 0.3
+        if main_table:
+            confidence += 0.3
+        if join_plan:
+            confidence += 0.3
+        if selected_columns:
+            confidence += 0.1
+        confidence = min(confidence, 1.0)
+
+        # Assemble a conservative draft SQL when sufficiently confident
+        draft_sql: str | None = None
+        if not clarifications and (main_table or selected_tables):
+            anchor = main_table or (selected_tables[0] if selected_tables else None)
+            if anchor:
+                sel_cols: list[str] = []
+                if selected_columns:
+                    sel_cols = [f"{c.table}.{c.column}" for c in selected_columns[:8]]
+                else:
+                    # Fallback to first few non-nullable columns of anchor table
+                    card = explorer.card
+                    tp = card.tables.get(anchor)
+                    if tp:
+                        for col in tp.columns[:6]:
+                            sel_cols.append(f"{anchor}.{col.name}")
+                if not sel_cols:
+                    sel_cols = ["*"]
+
+                lines: list[str] = []
+                lines.append("SELECT")
+                lines.append("    " + ", ".join(sel_cols))
+                lines.append(f"FROM {anchor}")
+
+                # Add LEFT JOINs from join_plan anchored on the from_table sequence
+                if join_plan:
+                    for step in join_plan:
+                        join_tbl = step.to_table
+                        # Default to LEFT JOIN for safety
+                        on_parts = [f"{p.left} = {p.right}" for p in step.on[:2]] or ["1=1"]
+                        lines.append(f"LEFT JOIN {join_tbl} ON " + " AND ".join(on_parts))
+
+                draft_sql = "\n".join(lines)
+                assumptions.append("Used LEFT JOINs for safety where relationships exist.")
+
+        status: Literal["ok", "needs_input", "error"] = "ok"
+        next_action: (
+            Literal[
+                "execute_query",
+                "request_clarification",
+                "inspect_table",
+                "refine_plan",
+            ]
+            | None
+        ) = None
+        if clarifications:
+            status = "needs_input"
+            next_action = "request_clarification"
+        elif draft_sql:
+            next_action = "execute_query"
+        else:
+            next_action = "refine_plan"
+
         return QuerySchemaResult(
             query=query,
             relevant_tables=relevant_tables,
@@ -125,6 +201,12 @@ class QuerySchemaResultBuilder:
             group_by_candidates=group_by_candidates,
             filter_candidates=filter_candidates,
             selected_columns=selected_columns,
+            draft_sql=draft_sql,
+            clarifications=clarifications,
+            assumptions=assumptions,
+            confidence=confidence,
+            next_action=next_action,
+            status=status,
         )
 
     @staticmethod
