@@ -7,11 +7,16 @@ and database engine creation.
 
 from __future__ import annotations
 
+import importlib.util
 import os
 
 import sqlalchemy as sa
 
 from nl2sql_mcp.schema_tools.models import SchemaExplorerConfig
+from nl2sql_mcp.schema_tools.mssql_spatial import register_mssql_spatial_types
+
+# Optional plugin detection at import time to avoid runtime try/except.
+_HAS_GEOALCHEMY2 = importlib.util.find_spec("geoalchemy2") is not None
 
 
 class LLMConfig:
@@ -59,7 +64,24 @@ class ConfigService:
         Returns:
             SQLAlchemy Engine instance
         """
-        return sa.create_engine(url)
+        # Attach optional engine plugins when available.
+        # - geoalchemy2: enables reflection of PostGIS (geometry/geography) and other
+        #   spatial types via SQLAlchemy's plugin hook without importing in reflection code.
+        plugins: list[str] = ["geoalchemy2"] if _HAS_GEOALCHEMY2 else []
+
+        create_kwargs: dict[str, object] = {}
+        if plugins:
+            create_kwargs["plugins"] = plugins
+
+        engine = sa.create_engine(url, **create_kwargs)
+
+        # Dialect-specific enhancements (kept minimal and testable):
+        # - On SQL Server, register placeholder spatial types so reflection
+        #   recognizes GEOGRAPHY/GEOMETRY columns instead of warning.
+        if engine.dialect.name == "mssql":
+            register_mssql_spatial_types(engine)
+
+        return engine
 
     @staticmethod
     def create_schema_explorer_config_default() -> SchemaExplorerConfig:
@@ -108,9 +130,7 @@ class ConfigService:
         provider = os.getenv("NL2SQL_MCP_LLM_PROVIDER")
         model = os.getenv("NL2SQL_MCP_LLM_MODEL")
         if not provider or not model:
-            msg = (
-                "LLM configuration missing: set NL2SQL_MCP_LLM_PROVIDER and NL2SQL_MCP_LLM_MODEL"
-            )
+            msg = "LLM configuration missing: set NL2SQL_MCP_LLM_PROVIDER and NL2SQL_MCP_LLM_MODEL"
             raise ValueError(msg)
 
         def _f(env: str, default: str) -> str:
