@@ -10,6 +10,8 @@ import logging
 import dotenv
 from fastmcp import FastMCP
 from fastmcp.utilities.logging import get_logger
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from nl2sql_mcp.execute.mcp_tools import register_execute_query_tool
 from nl2sql_mcp.schema_tools.mcp_tools import register_intelligence_tools
@@ -24,6 +26,7 @@ dotenv.load_dotenv()
 _logger = get_logger(__name__)
 
 
+# -- Context Manager for SchemaService initialization -------------------
 @asynccontextmanager
 async def lifespan(_mcp_instance: FastMCP) -> AsyncGenerator[None]:
     """FastMCP lifespan context manager for schema service initialization."""
@@ -48,25 +51,31 @@ mcp = FastMCP(
 )
 
 # -- Tool Registration -------------------------------------------------------
+sqlglot_service = SqlglotService()
 
-_sqlglot_service = SqlglotService()
 register_intelligence_tools(mcp)
-register_execute_query_tool(mcp, sqlglot_service=_sqlglot_service)
+register_execute_query_tool(mcp, sqlglot_service=sqlglot_service)
 
 
+# -- Health Check ----------------------------------------------------------
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(_request: Request) -> JSONResponse:
+    return JSONResponse({"status": "healthy", "service": "mcp-server"})
+
+
+# -- Main Function ---------------------------------------------------------
 def main() -> None:
     """Run the MCP server."""
     try:
         # Fail fast if required environment variables are missing
         try:
-            # Validate database configuration early; LLM config no longer required
             ConfigService.get_database_url()
         except ValueError:
             _logger.exception("Startup configuration error")
             raise SystemExit(1) from None
 
         with contextlib.suppress(KeyboardInterrupt):
-            mcp.run()
+            mcp.run(transport="http", host="0.0.0.0", port=8000)  # noqa: S104
     except (RuntimeError, OSError):
         logging.getLogger(__name__).exception("Exception in server startup")
         raise
