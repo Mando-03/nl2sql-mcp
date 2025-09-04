@@ -75,9 +75,6 @@ class RetrievalEngine:
         self._LEXICON_TOP_N: int = 16
         self._LEXICON_MIN_DF: int = 2
 
-        # No hardcoded synonyms or table hints. All expansion is schema-driven
-        # using token morphology, learned lexicon neighbors, and lexical cache.
-
     def _filter_archive_priority(
         self, items: list[tuple[str, float]], k: int
     ) -> list[tuple[str, float]]:

@@ -91,7 +91,7 @@ class Sampler:
         _logger.debug("Sampling %s.%s with query: %s", schema, table, sql_query)
 
         try:
-            # Use provided connection (preferred for amortized cost) or open a new one
+            # Use provided connection or open a new one
             if conn is None:
                 with self.engine.connect() as _conn:
                     streaming_conn = _conn.execution_options(stream_results=True)

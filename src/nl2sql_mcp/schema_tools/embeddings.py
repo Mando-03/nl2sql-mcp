@@ -49,11 +49,12 @@ class Embedder:
         model: SentenceTransformer model instance
     """
 
-    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2") -> None:
+    def __init__(self, model_name: str = "BAAI/bge-small-en-v1.5") -> None:
         """Initialize the embedder with a sentence transformer model.
 
         Args:
             model_name: Name or path of the sentence transformer model
+            Defaults to https://huggingface.co/BAAI/bge-small-en-v1.5
 
         Raises:
             RuntimeError: If sentence-transformers is not installed
