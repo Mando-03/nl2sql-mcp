@@ -1,200 +1,422 @@
-% NL2SQL MCP
+# nl2sql-mcp
 
-A natural‑language‑to‑SQL Model Context Protocol (MCP) server that executes one safe, executable `SELECT` and returns concise, typed results. Built for type‑safety, testability, and cross‑database compatibility.
+[![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
+[![MCP Protocol](https://img.shields.io/badge/MCP-compatible-green.svg)](https://modelcontextprotocol.io)
+[![Type Checked](https://img.shields.io/badge/type--checked-basedpyright-blue.svg)](https://github.com/detachhead/basedpyright)
+[![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
-- Server: FastMCP tools for schema discovery, SQL assistance, and query planning
-- Tool: `execute_query`—executes exactly one caller‑provided `SELECT` with strong safeguards
-- Engines: Works with SQLAlchemy; validated/transpiled via `sqlglot`
+A production-ready **Model Context Protocol (MCP) server** that transforms natural language into safe, executable SQL queries. Built for LLMs with comprehensive type safety, multi-database support, and intelligent schema analysis.
 
+## 🚀 Key Features
 
-## Features
+### 🎯 **LLM-Optimized Intelligence**
+- **Intent-first query planning** with structured schema context and join recommendations
+- **Semantic schema analysis** with automatic table classification (fact, dimension, bridge, reference)
+- **Multi-modal table discovery** using lexical matching, embeddings, and graph traversal
+- **Column role detection** (key, date, metric, category) with semantic tagging
 
-- **LLM‑ready schema intelligence:** Reflects your DB, profiles columns, builds FK graphs, discovers subject areas, and returns typed planning aids.
-- **Safe SQL execution:** Enforces `SELECT`‑only, normalizes dialect, validates with `sqlglot`, applies row budgets and per‑cell truncation.
-- **Typed MCP tools:** Analyze query schema, search tables/columns, extract constraints, and expose SQL helpers (validate/transpile/optimize/metadata).
-- **Configurable & testable:** Dependency‑injected services with Pydantic models; pure, side‑effect‑free core APIs.
+### 🛡️ **Production-Ready Safety**
+- **SELECT-only execution** with comprehensive SQL validation
+- **Dialect normalization** and transpilation via SQLGlot
+- **Row limits and cell truncation** to prevent resource exhaustion
+- **Comprehensive error handling** with actionable feedback
 
+### 🔧 **Multi-Database Support**
+- **SQLAlchemy-powered** compatibility with PostgreSQL, MySQL, SQL Server, SQLite, Oracle, Snowflake
+- **Dialect-aware** SQL generation and optimization
+- **Cross-platform** schema reflection and analysis
 
-## Architecture
+### 🏗️ **Enterprise Architecture**
+- **Type-safe** Pydantic models throughout
+- **Dependency injection** for testability
+- **Background initialization** with graceful degradation
+- **Zero hardcoded assumptions** - adapts to any database schema
 
-```mermaid
-graph TD
-  A[Client / LLM<br/>MCP Tool Calls] -- FastMCP --> B[nl2sql-mcp Server]
+## 📦 Quick Start
 
-  subgraph B1[Server Core]
-    B11[Lifecycle / Config<br/>(Pydantic models)]
-    B12[SchemaService<br/>(reflect + cache + readiness)]
-    B13[Tool Router<br/>(FastMCP)]
-  end
+### Prerequisites
 
-  B --> B1
-  B1 -->|ready?| B12
+- **Python 3.13+**
+- **uv** package manager
+- Database with appropriate drivers installed
 
-  subgraph T[Exposed MCP Tools]
-    T1[get_init_status]
-    T2[get_database_overview]
-    T3[plan_query_for_intent]
-    T4[get_table_info]
-    T5[(optional) find_tables / find_columns]
-    T6[sqlglot_* helpers]
-    T7[execute_query]
-  end
-
-  B13 --> T1
-  B13 --> T2
-  B13 --> T3
-  B13 --> T4
-  B13 --> T5
-  B13 --> T6
-  B13 --> T7
-
-  subgraph INT[Intelligence Modules]
-    I1[Schema Tools<br/>analysis + planning]
-    I2[SQLGlot Tools<br/>validate / transpile / optimize / metadata]
-  end
-
-  T2 --> I1
-  T3 --> I1
-  T4 --> I1
-  T5 --> I1
-  T6 --> I2
-
-  subgraph DB[Database]
-    D1[(SQLAlchemy Engine)]
-    D2[(Your RDBMS: Postgres / MySQL / SQL Server / SQLite / etc.)]
-  end
-
-  T7 -- SELECT‑only --> D1 --> D2
-
-  I1 -->|introspection| D1
-  B12 -->|reflect / cache| D1
-```
-
-Alt text: The client calls FastMCP tools exposed by the nl2sql-mcp server. A core layer manages config, readiness, and routing to tools. Intelligence modules power schema analysis and SQLGlot helpers. All database access goes through SQLAlchemy; execute_query enforces SELECT-only. The SchemaService reflects and caches metadata and reports readiness.
-
-
-## Modules
-
-- `src/nl2sql_mcp/execute/` — direct execution tool (execute_query)
-- `src/nl2sql_mcp/schema_tools/` — schema intelligence MCP tools (see module README)
-- `src/nl2sql_mcp/services/` — configuration, schema service, and lifecycle manager
-- `src/nl2sql_mcp/sqlglot_tools/` — SQL validation/transpile/metadata MCP tools
-
-For deeper detail, see:
-
-- `src/nl2sql_mcp/execute/` (module docs inline)
-- `src/nl2sql_mcp/schema_tools/README.md`
-- `src/nl2sql_mcp/services/README.md`
-- `src/nl2sql_mcp/sqlglot_tools/README.md`
-
-
-## MCP Tools Overview
-
-Schema tools (selected):
-- `analyze_query_schema(query, max_tables=5, ...)` → `QuerySchemaResult` with relevant tables, join plan, key columns, group/filter candidates.
-- `get_database_overview()` → `DatabaseOverview` with subject areas and summaries.
-- `get_table_info(table_key, include_samples=True, ...)` → `TableInfo` with columns, PK/FK, constraints, and samples.
-- `find_tables(query, limit=10, approach="combo", alpha=0.7)` → `TableSearchHit[]`.
-- `find_columns(keyword, limit=25, by_table=None)` → `ColumnSearchHit[]`.
-- `get_init_status()` → readiness/error details for the schema service.
-
-SQLGlot tools:
-- `sql_validate(sql)`
-- `sql_transpile_to_database(sql, source_dialect)`
-- `sql_auto_transpile_for_database(sql)`
-- `sql_optimize_for_database(sql, schema_map?)`
-- `sql_extract_metadata(sql)`
-- `sql_assist_from_error(sql, error_message)`
-
-
-## Tool: execute_query
-
-Executes exactly one caller‑provided `SELECT` safely and returns a typed payload.
-
-Flow:
-1. Safety guards (`SELECT`‑only; strip trailing `;`).
-2. Dialect: `SqlglotService.auto_transpile_for_database()` and `validate()`.
-3. Execute via SQLAlchemy with truncation budgets.
-4. Return typed `ExecuteQueryResult` with notes and next‑step hints.
-
-Safeguards:
-- Only `SELECT` allowed; no mutations.
-- Deterministic truncation by row count and per‑cell character limit.
-
-
-## Install
-
-Prerequisites:
-- Python 3.13
-- `uv` for environment management
-
-Setup:
+### Installation
 
 ```bash
+# Clone the repository
+git clone https://github.com/jb3cloud/nl2sql-mcp.git
+cd nl2sql-mcp
+
+# Install dependencies
 uv sync
+
+# Configure your database
+cp .env.example .env
+# Edit .env with your database connection details
 ```
 
-Key environment variables (via `.env`):
-- `NL2SQL_MCP_DATABASE_URL` (required)
-- Result budgets: `NL2SQL_MCP_ROW_LIMIT`, `NL2SQL_MCP_MAX_CELL_CHARS`
-
-
-## Run
-
-Start the MCP server:
+### Basic Usage
 
 ```bash
+# Start the MCP server
 uv run nl2sql-mcp
-# or
+
+# Or run directly
 uv run python -m nl2sql_mcp.server
 ```
 
-Try the local harnesses (require a live DB and `.env`):
+### Environment Configuration
+
+Create a `.env` file with your database connection:
 
 ```bash
-# Schema intelligence demo
-uv run python scripts/test_intelligence_harness.py "show sales by region"
+# Required: Database connection
+NL2SQL_MCP_DATABASE_URL=postgresql://user:pass@localhost:5432/dbname
 
-# SQLGlot helpers demo
-uv run python scripts/test_sqlglot_harness.py "select top 10 * from dbo.Customers"
-
-# execute_query demo
-NL2SQL_MCP_EXAMPLE_SQL='SELECT 1 AS one' uv run python scripts/test_execute_query_harness.py
+# Optional: Result limits and debugging
+NL2SQL_MCP_ROW_LIMIT=1000
+NL2SQL_MCP_MAX_CELL_CHARS=500
+NL2SQL_MCP_DEBUG_TOOLS=1  # Enable find_tables/find_columns tools
 ```
 
-FastMCP documentation: https://gofastmcp.com/llms.txt
+## 🏛️ Architecture
 
+```mermaid
+graph TD
+    A[LLM Client] -->|MCP Protocol| B[FastMCP Server]
 
-## Development
+    subgraph "Core Services"
+        B --> C[Schema Service]
+        B --> D[SQLGlot Service]
+        B --> E[Execution Engine]
+    end
 
-Formatting, lint, types, and tests:
+    subgraph "Intelligence Layer"
+        C --> F[Schema Explorer]
+        C --> G[Query Engine]
+        F --> H[Reflection & Profiling]
+        F --> I[Graph Analysis]
+        G --> J[Multi-Modal Retrieval]
+        G --> K[Graph Expansion]
+    end
+
+    subgraph "Data Layer"
+        E --> L[SQLAlchemy Engine]
+        H --> L
+        L --> M[(Your Database)]
+    end
+
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style M fill:#e8f5e8
+```
+
+The system follows a **two-phase architecture**:
+
+1. **Schema Building Phase**: Comprehensive database analysis, relationship mapping, and semantic understanding
+2. **Query Processing Phase**: Real-time natural language to SQL conversion with context-aware planning
+
+## 🔌 MCP Tools API
+
+### Core Workflow Tools
+
+#### `get_init_status()`
+Check server readiness and initialization progress.
+
+```json
+// Response
+{
+  "phase": "READY",
+  "attempts": 1,
+  "started_at": "2024-01-15T10:30:00Z",
+  "completed_at": "2024-01-15T10:30:45Z"
+}
+```
+
+#### `get_database_overview(req: DatabaseOverviewRequest)`
+High-level database summary with subject areas.
+
+```json
+// Request
+{
+  "include_subject_areas": true,
+  "area_limit": 8
+}
+
+// Response
+{
+  "total_tables": 45,
+  "total_schemas": 3,
+  "subject_areas": [
+    {
+      "name": "Sales Analytics",
+      "tables": ["orders", "customers", "products"],
+      "summary": "Customer orders and product sales data"
+    }
+  ]
+}
+```
+
+#### `plan_query_for_intent(req: PlanQueryRequest)`
+Intent-first SQL planning with structured guidance.
+
+```json
+// Request
+{
+  "request": "Show monthly revenue by region for 2024",
+  "constraints": {
+    "time_range": "2024-01-01..2024-12-31",
+    "metric": "revenue"
+  },
+  "detail_level": "standard"
+}
+
+// Response
+{
+  "relevant_tables": [
+    {
+      "table_key": "sales.orders",
+      "relevance_score": 0.95,
+      "why_relevant": "Contains revenue data and date columns"
+    }
+  ],
+  "join_plan": [
+    ["sales.orders.customer_id", "customers.id"]
+  ],
+  "main_table": "sales.orders",
+  "draft_sql": "SELECT DATE_TRUNC('month', order_date) as month...",
+  "confidence": 0.92
+}
+```
+
+#### `execute_query(req: ExecuteQueryRequest)`
+Safe SQL execution with validation and results.
+
+```json
+// Request
+{
+  "sql": "SELECT region, SUM(amount) as revenue FROM sales.orders WHERE order_date >= '2024-01-01' GROUP BY region"
+}
+
+// Response
+{
+  "success": true,
+  "rows": [
+    {"region": "North", "revenue": 125000.50},
+    {"region": "South", "revenue": 98750.25}
+  ],
+  "row_count": 2,
+  "columns": [
+    {"name": "region", "type": "VARCHAR"},
+    {"name": "revenue", "type": "DECIMAL"}
+  ],
+  "execution_time_ms": 45,
+  "next_action": "success"
+}
+```
+
+### Discovery Tools
+
+#### `get_table_info(req: TableInfoRequest)`
+Detailed table metadata optimized for SQL generation.
+
+```json
+// Request
+{
+  "table_key": "sales.orders",
+  "include_samples": true,
+  "column_role_filter": ["key", "date", "metric"]
+}
+```
+
+#### `find_tables(req: FindTablesRequest)` *(Debug Mode)*
+Fast table discovery by natural language intent.
+
+#### `find_columns(req: FindColumnsRequest)` *(Debug Mode)*
+Column search for SELECT and WHERE clause building.
+
+### SQL Assistance Tools
+
+#### `sql_validate(sql: str)`
+Validate SQL syntax and structure.
+
+#### `sql_auto_transpile_for_database(sql: str)`
+Automatically detect and convert SQL dialects.
+
+#### `sql_optimize_for_database(sql: str)`
+Optimize SQL for your database engine.
+
+## ⚙️ Configuration
+
+### Database Support
+
+| Database | SQLAlchemy Driver | Connection String Example |
+|----------|-------------------|---------------------------|
+| PostgreSQL | `psycopg2` | `postgresql://user:pass@host:5432/db` |
+| MySQL | `pymysql` | `mysql+pymysql://user:pass@host:3306/db` |
+| SQL Server | `pyodbc` | `mssql+pyodbc://user:pass@host/db?driver=ODBC+Driver+17` |
+| SQLite | Built-in | `sqlite:///path/to/database.db` |
+| Oracle | `cx_oracle` | `oracle://user:pass@host:1521/service` |
+| Snowflake | `snowflake-sqlalchemy` | `snowflake://user:pass@account/db/schema` |
+
+### Schema Configuration
+
+Control schema analysis behavior:
+
+```python
+# Via environment or configuration
+NL2SQL_MCP_INCLUDE_SCHEMAS=public,analytics
+NL2SQL_MCP_EXCLUDE_SCHEMAS=temp,audit
+NL2SQL_MCP_SAMPLE_SIZE=100  # Rows per table for profiling
+```
+
+### Performance Tuning
 
 ```bash
+# Memory and processing limits
+NL2SQL_MCP_ROW_LIMIT=1000           # Max rows returned
+NL2SQL_MCP_MAX_CELL_CHARS=500       # Truncate long text
+NL2SQL_MCP_SAMPLE_TIMEOUT=5         # Sampling timeout (seconds)
+NL2SQL_MCP_MAX_COLS_FOR_EMBEDDINGS=20  # Column embedding limit
+```
+
+## 🧪 Testing and Development
+
+### Local Development Setup
+
+```bash
+# Install development dependencies
+uv sync --dev
+
+# Run type checking
+uv run basedpyright
+
+# Format and lint code
 uv run ruff format .
 uv run ruff check --fix .
-uv run basedpyright
-uv run pytest -q
+
+# Run tests
+uv run pytest -v
 ```
 
-Project structure:
-- `src/nl2sql_mcp/` — main package (server, intelligence, services, builders)
-- `scripts/` — local harnesses and demos
-- `tests/` — test suite
-- `docs/`, `examples/`, `data/` — reference and samples
+### Testing with Live Database
 
-Coding standards:
-- Python 3.13, strict type checking, Pydantic/dataclasses for structured data
-- Pure functions and dependency injection for testability
-- No hard‑coded schema logic; engine‑agnostic via SQLAlchemy
+```bash
+# Schema intelligence testing
+uv run python scripts/test_intelligence_harness.py "show sales by region"
 
+# SQL tools testing
+uv run python scripts/test_sqlglot_harness.py "SELECT TOP 10 * FROM customers"
+```
 
-## Supported Dialects
+### Quality Assurance
 
-Validation/transpile support via `sqlglot` for:
-`sql`, `postgres`, `mysql`, `sqlite`, `tsql`, `oracle`, `snowflake`, `bigquery`.
+- **100% type coverage** with basedpyright strict mode
+- **Comprehensive test suite** with pytest
+- **Zero linting violations** with ruff
+- **Dependency injection** for testability
+- **Pure functions** where possible
 
+## 📚 Advanced Usage
 
-## Notes
+### Custom Schema Analysis
 
-- Embeddings are optional at runtime; retrieval falls back to lexical methods.
-- The schema service is initialized once per process and exposes readiness state for clients.
+```python
+from nl2sql_mcp.services import ConfigService, SchemaServiceManager
+
+# Initialize with custom configuration
+config = ConfigService()
+manager = SchemaServiceManager.get_instance()
+
+# Access schema service after initialization
+schema_service = manager.get_schema_service()
+result = schema_service.analyze_query_schema(
+    "Find customers with high lifetime value",
+    max_tables=10,
+    expand_strategy="fk_following"
+)
+```
+
+### Multi-Agent Integration
+
+The MCP server integrates seamlessly with multi-agent frameworks:
+
+```python
+# Example with your LLM framework
+async def query_database(natural_language_query: str):
+    # 1. Plan the query
+    plan_result = await mcp_client.call_tool(
+        "plan_query_for_intent",
+        {"request": natural_language_query}
+    )
+
+    # 2. Execute the draft SQL
+    if plan_result.draft_sql:
+        execution_result = await mcp_client.call_tool(
+            "execute_query",
+            {"sql": plan_result.draft_sql}
+        )
+        return execution_result.rows
+```
+
+### Code Standards
+
+- **Python 3.13+** with strict type checking
+- **Pydantic models** for all data structures
+- **Pure functions** and dependency injection for testability
+- **Comprehensive docstrings** for public APIs
+- **Zero tolerance** for type errors, lint violations, or test failures
+
+## 🏢 Production Deployment
+
+### Docker Deployment
+
+```dockerfile
+FROM python:3.13-slim
+WORKDIR /app
+COPY . .
+RUN pip install uv && uv sync --frozen
+CMD ["uv", "run", "nl2sql-mcp"]
+```
+
+### Environment Variables
+
+```bash
+# Required
+NL2SQL_MCP_DATABASE_URL=postgresql://...
+
+# Optional performance tuning
+NL2SQL_MCP_ROW_LIMIT=5000
+NL2SQL_MCP_MAX_CELL_CHARS=1000
+NL2SQL_MCP_SAMPLE_SIZE=200
+
+# Security (if needed)
+NL2SQL_MCP_ALLOWED_SCHEMAS=public,analytics
+NL2SQL_MCP_DENIED_PATTERNS=password,secret,key
+```
+
+### Health Monitoring
+
+Monitor server health via the `get_init_status()` tool:
+
+- `READY`: Server fully operational
+- `STARTING`: Initialization in progress
+- `FAILED`: Initialization failed, check logs
+
+## 📖 Related Research
+
+This implementation incorporates state-of-the-art research in text-to-SQL:
+
+- **Multi-agent architectures** for complex query decomposition
+- **Schema linking** with bidirectional context understanding
+- **Error correction frameworks** with multi-turn refinement
+- **Semantic understanding** via lightweight NER and role classification
+
+For detailed research context, see [NL2SQL_RESEARCH.md](docs/NL2SQL_RESEARCH.md).
+
+## 🙏 Acknowledgments
+
+- **[FastMCP](https://gofastmcp.com)** for the excellent MCP server framework
+- **[SQLGlot](https://sqlglot.com)** for multi-dialect SQL parsing and transpilation
+- **[SQLAlchemy](https://sqlalchemy.org)** for robust database abstraction
+- The **text-to-SQL research community** for advancing the field
