@@ -405,10 +405,6 @@ NL2SQL_MCP_DATABASE_URL=postgresql://...
 NL2SQL_MCP_ROW_LIMIT=5000
 NL2SQL_MCP_MAX_CELL_CHARS=1000
 NL2SQL_MCP_SAMPLE_SIZE=200
-
-# Security (if needed)
-NL2SQL_MCP_ALLOWED_SCHEMAS=public,analytics
-NL2SQL_MCP_DENIED_PATTERNS=password,secret,key
 ```
 
 ### Health Monitoring
