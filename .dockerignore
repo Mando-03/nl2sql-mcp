@@ -1,5 +1,6 @@
 # Git
 .git/
+.github/
 .gitignore
 
 # Python
@@ -10,10 +11,6 @@ __pycache__/
 *.pyd
 .pytest_cache/
 .ruff_cache/
-
-# Docker
-Dockerfile
-.dockerignore
 
 # IDE
 .vscode/

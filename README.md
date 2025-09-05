@@ -91,6 +91,45 @@ uv run nl2sql-mcp
 uv run python -m nl2sql_mcp.server
 ```
 
+## 🛠️ Makefile Workflow
+
+The repository includes a Makefile that standardizes common tasks. All targets invoke tooling via `uv run` to ensure a consistent environment.
+
+```bash
+# Discover available targets and variables
+make help
+
+# Run the full Quality Gauntlet (format → lint → typecheck → test)
+make quality
+
+# Individual steps (as needed)
+make format     # Ruff format
+make lint       # Ruff check --fix
+make typecheck  # basedpyright (strict)
+make test       # pytest
+make clean      # Remove caches and build artifacts
+```
+
+Deployment helpers for Azure Container Apps are also provided:
+
+```bash
+# Verify Azure CLI login and (optionally) set subscription
+make preflight AZ_SUBSCRIPTION="00000000-0000-0000-0000-000000000000"
+
+# Build from source and deploy
+make publish \
+  APP_NAME=my-nl2sql-mcp \
+  RESOURCE_GROUP=my-rg \
+  ENVIRONMENT=my-aca-env \
+  LOCATION=eastus \
+  AZ_SUBSCRIPTION="00000000-0000-0000-0000-000000000000" \
+  INGRESS=external \
+  TARGET_PORT=8000 \
+  ENV_ARGS="NL2SQL_MCP_DATABASE_URL=postgresql://user:pass@host:5432/db"
+```
+
+Supported variables (can be provided via environment or CLI): `APP_NAME`, `RESOURCE_GROUP`, `LOCATION`, `ENVIRONMENT`, `AZ_SUBSCRIPTION`, `INGRESS` (default `external`), `TARGET_PORT` (default `8000`).
+
 ### Environment Configuration
 
 Create a `.env` file with your database connection:

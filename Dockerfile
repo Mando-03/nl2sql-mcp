@@ -14,11 +14,11 @@ ENV UV_LINK_MODE=copy \
 
 # 1) Install deps (no project). Copy only lock + pyproject to keep this layer warm.
 COPY pyproject.toml fastmcp.json uv.lock ./
-RUN uv sync --locked --no-cache --no-install-project --no-editable --all-extras
+RUN uv sync --locked --no-cache --no-install-project --no-editable --extra drivers
 
 # 2) Add source and perform final sync to install the project (non-editable) into .venv
 COPY src/ ./src/
-RUN uv sync --locked --no-cache --no-editable --all-extras
+RUN uv sync --locked --no-cache --no-editable --extra drivers
 RUN uv pip install --no-cache --no-deps --no-build-isolation .
 
 # ---------- runtime ----------
