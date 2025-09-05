@@ -23,3 +23,9 @@ Dockerfile
 .env
 .env.example
 server-info.json
+
+# Documentation
+docs/
+
+# Tests
+tests/
