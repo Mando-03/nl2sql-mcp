@@ -18,11 +18,10 @@ classifiers = [
 ]
 keywords = ["mcp", "sql", "natural-language", "ai"]
 dependencies = [
-    "fastmcp>=2.0.0",
+    "fastmcp>=2.12.0",
     "pydantic>=2.0.0",
     "sqlalchemy[asyncio]>=2.0.0",
     "sqlglot>=25.7.0",
-    "pyodbc>=5.0.0",                # Database support
     "pandas>=2.3.2",
     "networkx>=3.5",
     "sentence-transformers>=5.1.0",
@@ -50,10 +49,30 @@ Documentation = "https://github.com/jb3cloud/nl2sql-mcp#readme"
 Issues = "https://github.com/jb3cloud/nl2sql-mcp/issues"
 Changelog = "https://github.com/jb3cloud/nl2sql-mcp/blob/main/CHANGELOG.md"
 
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.uv]
+package = true
+
 [tool.ruff]
 target-version = "py313"
 line-length = 99
 output-format = "grouped"
+
+[project.optional-dependencies]
+drivers = [
+    "psycopg[binary]>=3.2",
+    "mysql-connector-python>=9.0",
+    "pyodbc>=5.0.0",
+]
 
 [tool.ruff.lint]
 per-file-ignores = { "scripts/*.py" = [
