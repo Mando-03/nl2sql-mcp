@@ -6,10 +6,6 @@ dist/
 wheels/
 *.egg-info
 
-# Claude
-.claude/
-.mcp.json
-
 # Virtual environments
 .venv/
 
@@ -17,9 +13,6 @@ wheels/
 .ruff_cache/
 .cache
 .pytest_cache/
-data/
-# Explicitly ignore embedded vector store artifacts (safety/documentation)
-data/chroma/
 
 # Mac
 .DS_Store
@@ -27,3 +20,4 @@ data/chroma/
 # Environment Variables
 .env
 .env.local
+.azure
