@@ -14,15 +14,12 @@ ENV UV_LINK_MODE=copy \
 
 # 1) Install deps (no project). Copy only lock + pyproject to keep this layer warm.
 COPY pyproject.toml fastmcp.json uv.lock ./
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-install-project --no-editable --all-extras
+RUN uv sync --locked --no-cache --no-install-project --no-editable --all-extras
 
 # 2) Add source and perform final sync to install the project (non-editable) into .venv
 COPY src/ ./src/
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-editable --all-extras
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --no-deps --no-build-isolation .
+RUN uv sync --locked --no-cache --no-editable --all-extras
+RUN uv pip install --no-cache --no-deps --no-build-isolation .
 
 # ---------- runtime ----------
 FROM python:${SLIM_PYTHON_VERSION} AS runtime
@@ -36,8 +33,7 @@ RUN groupadd --system app && useradd --system --gid app --home /app --shell /usr
 RUN mkdir -p /app/scripts
 
 ## Install runtime shared libraries for all supported DBs
-RUN --mount=type=cache,target=/var/cache/apt \
-    set -eux; \
+RUN set -eux; \
     apt-get update; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     unixodbc \
@@ -49,8 +45,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
     rm -rf /var/lib/apt/lists/*
 
 # Install Microsoft ODBC Driver for SQL Server
-RUN --mount=type=cache,target=/var/cache/apt \
-    set -eux; \
+RUN set -eux; \
     curl -sSL -O https://packages.microsoft.com/config/debian/$(grep VERSION_ID /etc/os-release | cut -d '"' -f 2 | cut -d '.' -f 1)/packages-microsoft-prod.deb ; \
     dpkg -i packages-microsoft-prod.deb ; \
     rm packages-microsoft-prod.deb ; \
