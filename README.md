@@ -7,6 +7,32 @@
 
 A production-ready **Model Context Protocol (MCP) server** that transforms natural language into safe, executable SQL queries. Built for LLMs with comprehensive type safety, multi-database support, and intelligent schema analysis.
 
+## Database Support
+
+This project provides an "all drivers" container image that can connect to the major databases without post-build steps. Drivers are modeled as optional dependencies and the Dockerfile installs the minimal OS libraries required at runtime.
+
+- PostgreSQL: Python driver `psycopg[binary]` (v3); OS libs: `libpq5`.
+- MySQL/MariaDB: Python driver `mysqlclient`; OS libs: `libmariadb3`.
+- SQL Server: Python driver `pyodbc`; OS libs: `unixodbc`, Microsoft `msodbcsql18` (+ optional `mssql-tools18`).
+- SQLite: stdlib `sqlite3` (no extra OS libs).
+
+Local dev installs:
+
+- All drivers: `uv sync --extra drivers-all`
+- Specific backends: `uv sync --extra postgres --extra mysql` (as needed)
+
+Build the all-drivers image:
+
+```
+docker build -t nl2sql-mcp:drivers-all .
+docker run --rm -p 8000:8000 nl2sql-mcp:drivers-all
+```
+
+Notes:
+
+- Debian slim base maximizes prebuilt wheel compatibility. Avoid Alpine for DB stacks.
+- To switch MySQL to a pure-Python driver, replace `mysqlclient` with `mysql-connector-python` in `pyproject.toml` and re-lock with `uv lock --extra drivers-all`.
+
 ## 🚀 Key Features
 
 ### 🎯 **LLM-Optimized Intelligence**
@@ -368,16 +394,6 @@ async def query_database(natural_language_query: str):
 - **Zero tolerance** for type errors, lint violations, or test failures
 
 ## 🏢 Production Deployment
-
-### Docker Deployment
-
-```dockerfile
-FROM python:3.13-slim
-WORKDIR /app
-COPY . .
-RUN pip install uv && uv sync --frozen
-CMD ["uv", "run", "nl2sql-mcp"]
-```
 
 ### Environment Variables
 
