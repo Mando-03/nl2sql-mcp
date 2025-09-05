@@ -166,7 +166,7 @@ class SchemaServiceManager:
             engine: SQLAlchemy engine to use for reflection
         """
         if type(self).GLOBAL_EXPLORER is None:
-            self._logger.info("Building global schema explorer (cold start may take seconds)…")
+            self._logger.info("Building global schema explorer…")
             config = ConfigService.get_query_analysis_config()
             global_explorer = SchemaExplorer(engine, config)
             global_explorer.build_index()

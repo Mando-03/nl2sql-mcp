@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Literal, cast
 
+import pyodbc
 import sqlalchemy as sa
 
 from nl2sql_mcp.models import (
@@ -29,6 +30,8 @@ from nl2sql_mcp.schema_tools.response_builders import (
 )
 from nl2sql_mcp.schema_tools.utils import tokens_from_text
 from nl2sql_mcp.services.config_service import ConfigService
+
+pyodbc.pooling = False
 
 
 class SchemaService:

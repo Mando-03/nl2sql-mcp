@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-import contextlib
 from contextlib import asynccontextmanager
-import logging
 
 import dotenv
 from fastmcp import FastMCP
@@ -15,7 +13,6 @@ from starlette.responses import JSONResponse
 
 from nl2sql_mcp.execute.mcp_tools import register_execute_query_tool
 from nl2sql_mcp.schema_tools.mcp_tools import register_intelligence_tools
-from nl2sql_mcp.services.config_service import ConfigService
 from nl2sql_mcp.services.schema_service_manager import SchemaServiceManager
 from nl2sql_mcp.sqlglot_tools import SqlglotService
 
@@ -35,6 +32,8 @@ async def lifespan(_mcp_instance: FastMCP) -> AsyncGenerator[None]:
         _logger.info("Starting SchemaService initialization in background during lifespan startup")
         manager.start_background_initialization()
         yield
+    except Exception:
+        _logger.exception("Error during SchemaService initialization")
     finally:
         _logger.info("Shutting down SchemaService during lifespan shutdown")
         await manager.shutdown()
@@ -63,23 +62,7 @@ async def health_check(_request: Request) -> JSONResponse:
     return JSONResponse({"status": "healthy", "service": "mcp-server"})
 
 
-# -- Main Function ---------------------------------------------------------
-def main() -> None:
-    """Run the MCP server."""
-    try:
-        # Fail fast if required environment variables are missing
-        try:
-            ConfigService.get_database_url()
-        except ValueError:
-            _logger.exception("Startup configuration error")
-            raise SystemExit(1) from None
+# -- Main Entrypoint -------------------------------------------------------
 
-        with contextlib.suppress(KeyboardInterrupt):
-            mcp.run(transport="http", host="0.0.0.0", port=8000)  # noqa: S104
-    except (RuntimeError, OSError):
-        logging.getLogger(__name__).exception("Exception in server startup")
-        raise
-
-
-if __name__ == "__main__":
-    main()
+# Use fastmcp command to start the server
+# fastmcp run
