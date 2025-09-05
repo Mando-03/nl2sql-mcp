@@ -1,0 +1,11 @@
+{
+    "$schema": "https://gofastmcp.com/public/schemas/fastmcp.json/v1.json",
+    "source": {
+        "type": "filesystem",
+        "path": "src/nl2sql_mcp/server.py",
+        "entrypoint": "mcp"
+    },
+    "deployment": {
+        "log_level": "DEBUG"
+    }
+}
