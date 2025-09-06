@@ -50,7 +50,8 @@ def register_execute_query_tool(
             ),
         ],
     ) -> ExecuteQueryResult:  # pyright: ignore[reportUnusedFunction]
-        """Validate and transpile SELECT-only SQL, execute with row/cell truncation, and return typed results.
+        """Validate and transpile SELECT-only SQL, execute with row/cell truncation,
+        and return typed results.
 
         On error, use assist_notes, validation_notes, and next_action to refine; if truncated or
         rows reach the limit, paginate or aggregate as appropriate.
