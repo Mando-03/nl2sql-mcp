@@ -310,6 +310,20 @@ class SchemaServiceManager:
         self._schema_service = SchemaService(engine, global_explorer, global_embedder)
         self._logger.info("SchemaService instance created successfully")
 
+        # Warm query resources (embeddings/indices) in a light, non-blocking thread.
+        # This avoids the first tool call paying the vector/index build cost.
+        def _warm() -> None:
+            try:
+                svc = self._schema_service
+                if svc is not None:
+                    svc.prime_query_resources()
+                    self._logger.info("QueryEngine caches primed after initialization")
+            except (RuntimeError, ValueError, OSError):
+                # Best-effort warmup; log and continue
+                self._logger.debug("QueryEngine warmup skipped or failed", exc_info=True)
+
+        threading.Thread(target=_warm, name="qe-warm", daemon=True).start()
+
     # ---- background enrichment --------------------------------------------
     def _start_background_enrichment(self) -> None:
         """Start a post-READY enrichment pass in a daemon thread (exactly once)."""
@@ -327,6 +341,17 @@ class SchemaServiceManager:
                     raise RuntimeError(err)
                 explorer.enrich_index()
                 self._logger.info("Schema enrichment completed successfully")
+
+                # Re-prime QueryEngine caches now that the schema card is enriched.
+                try:
+                    svc = self._schema_service
+                    if svc is not None:
+                        svc.prime_query_resources()
+                        self._logger.info("QueryEngine caches re-primed after enrichment")
+                except (RuntimeError, ValueError, OSError):
+                    self._logger.debug(
+                        "QueryEngine re-prime after enrichment skipped or failed", exc_info=True
+                    )
             except Exception as exc:  # noqa: BLE001
                 msg = str(exc)
                 self._enrich_error_message = msg

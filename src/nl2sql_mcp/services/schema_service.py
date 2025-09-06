@@ -22,6 +22,7 @@ from nl2sql_mcp.models import (
 from nl2sql_mcp.schema_tools.constants import RetrievalApproach
 from nl2sql_mcp.schema_tools.embeddings import Embedder
 from nl2sql_mcp.schema_tools.explorer import SchemaExplorer
+from nl2sql_mcp.schema_tools.models import SchemaExplorerConfig
 from nl2sql_mcp.schema_tools.query_engine import QueryEngine
 from nl2sql_mcp.schema_tools.response_builders import (
     DatabaseSummaryBuilder,
@@ -50,6 +51,76 @@ class SchemaService:
         self.engine = engine
         self.explorer = explorer
         self.embedder = embedder
+
+        # Lazily-built, reusable QueryEngine tied to the explorer's SchemaCard.
+        # We rebuild only when the underlying schema fingerprint changes or
+        # when the effective query-analysis config changes.
+        self._query_engine: QueryEngine | None = None
+        self._qe_reflection_hash: str | None = None
+        self._qe_config_fingerprint: str | None = None
+
+    # ---- internal helpers -------------------------------------------------
+    def _config_fingerprint(self, config: SchemaExplorerConfig) -> str:
+        """Compute a stable fingerprint for QueryEngine-relevant config.
+
+        Args:
+            config: The SchemaExplorerConfig used for query analysis.
+
+        Returns:
+            A short string key that changes when QE-affecting knobs change.
+        """
+        # Only include knobs that affect embeddings/indices/expansion.
+        # Keep format simple and entirely static-typed.
+        return (
+            f"model={config.model_name}|cols={int(config.build_column_index)}"
+            f"|maxcols={config.max_cols_for_embeddings}|exp={config.expander}"
+        )
+
+    def _get_query_engine(self, config: SchemaExplorerConfig) -> QueryEngine:
+        """Return a cached QueryEngine, rebuilding only when needed.
+
+        Reuses table/column indices, token lexicon, and lexical cache across
+        requests to avoid repeated vectorization and Annoy builds.
+
+        Args:
+            config: The query-analysis configuration.
+
+        Returns:
+            A ready QueryEngine instance bound to the current SchemaCard.
+
+        Raises:
+            RuntimeError: If a schema card is not available.
+        """
+        card = self.explorer.card
+        if not card:
+            msg = "Global schema explorer has no schema card"
+            raise RuntimeError(msg)
+
+        cfg_fp = self._config_fingerprint(config)
+        needs_rebuild = (
+            self._query_engine is None
+            or self._qe_reflection_hash != card.reflection_hash
+            or self._qe_config_fingerprint != cfg_fp
+        )
+        if needs_rebuild:
+            # Build once; QueryEngine internally constructs lexical cache,
+            # embeddings, and Annoy indices. Subsequent calls reuse these.
+            self._query_engine = QueryEngine(card, config, embedder=self.embedder)
+            self._qe_reflection_hash = card.reflection_hash
+            self._qe_config_fingerprint = cfg_fp
+        # basedpyright: assure non-None before returning
+        assert self._query_engine is not None
+        return self._query_engine
+
+    # Public hook used by the manager to warm indices after init/enrichment.
+    def prime_query_resources(self) -> None:
+        """Warm QueryEngine caches/indices for the current schema card.
+
+        Builds the reusable QueryEngine once so the first user request does
+        not pay the embedding/index construction cost.
+        """
+        config = ConfigService.get_query_analysis_config()
+        _ = self._get_query_engine(config)
 
     def analyze_query_schema(  # noqa: PLR0913 - explicit controls are intentional
         self,
@@ -81,11 +152,9 @@ class SchemaService:
             msg = "Global schema explorer has no schema card"
             raise RuntimeError(msg)
 
-        # Get configuration for query engine
+        # Get configuration and a cached QueryEngine (reused across calls)
         config = ConfigService.get_query_analysis_config()
-
-        # Use QueryEngine to find relevant tables with the global embedder
-        query_engine = QueryEngine(self.explorer.card, config, embedder=self.embedder)
+        query_engine = self._get_query_engine(config)
         if not query_engine.retrieval_engine or not query_engine.graph_expander:
             msg = "Failed to initialize query engine components"
             raise RuntimeError(msg)
@@ -186,7 +255,7 @@ class SchemaService:
             raise RuntimeError(msg)
 
         config = ConfigService.get_query_analysis_config()
-        query_engine = QueryEngine(self.explorer.card, config, embedder=self.embedder)
+        query_engine = self._get_query_engine(config)
         if not query_engine.retrieval_engine:
             msg = "Failed to initialize retrieval engine"
             raise RuntimeError(msg)
@@ -215,7 +284,7 @@ class SchemaService:
             raise RuntimeError(msg)
 
         config = ConfigService.get_query_analysis_config()
-        query_engine = QueryEngine(self.explorer.card, config, embedder=self.embedder)
+        query_engine = self._get_query_engine(config)
 
         results: list[ColumnSearchHit] = []
         seen: set[tuple[str, str]] = set()
