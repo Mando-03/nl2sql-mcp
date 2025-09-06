@@ -17,6 +17,7 @@ from nl2sql_mcp.models import (
     FilterCandidate,
     ForeignKeyRef,
     JoinExample,
+    JoinOnPair,
     JoinPlanStep,
     QuerySchemaResult,
     SelectedColumn,
@@ -102,7 +103,7 @@ class QuerySchemaResultBuilder:
         )
 
         join_plan = QuerySchemaResultBuilder._build_join_plan(
-            join_examples, explorer, limit=joins_cap
+            join_examples, explorer, limit=joins_cap, query=query
         )
         group_by_candidates = QuerySchemaResultBuilder._build_group_by_candidates(
             main_table, dims_sorted, explorer, max_items=8
@@ -650,23 +651,128 @@ class QuerySchemaResultBuilder:
         )
 
     @staticmethod
-    def _build_join_plan(
-        join_examples: list[JoinExample], _explorer: SchemaExplorer, *, limit: int
+    def _build_join_plan(  # noqa: PLR0912 - controlled branching for clarity
+        join_examples: list[JoinExample],
+        explorer: SchemaExplorer,
+        *,
+        limit: int,
+        query: str | None = None,
     ) -> list[JoinPlanStep]:
-        """Build a structured join plan derived from join examples.
+        """Build a structured join plan with explicit ON pairs derived from FK edges.
 
-        Note: ON pairs are left empty until richer metadata is available.
+        For each join example, locate all foreign key edges between the two tables in
+        the `SchemaCard.edges` list. Each edge encodes a single column relationship in
+        the form "schema.table.column->schema.table.column". These are converted into
+        typed `JoinOnPair` entries. Composite keys naturally yield multiple pairs.
+
+        Enhancements:
+        - Composite ordering: ON pairs are ordered by the referenced table's PK order
+          when available; fallback to the FK declaration order on the source table.
+        - Relevance filtering: When multiple distinct relationships exist between the
+          same two tables, prefer ON pairs whose column names overlap query tokens.
         """
-        return [
-            JoinPlanStep(
-                from_table=j.from_table,
-                to_table=j.to_table,
-                on=[],
-                relationship_type=j.relationship_type,
-                purpose=j.business_purpose,
+        if not explorer.card:
+            msg = "Schema card not available"
+            raise RuntimeError(msg)
+
+        steps: list[JoinPlanStep] = []
+        edges = explorer.card.edges
+        qtokens = set(tokens_from_text(query or ""))
+
+        for j in join_examples[:limit]:
+            # Collect raw ON pairs with metadata for ordering/filtering
+            raw_pairs: list[tuple[str, str]] = []  # (left_fq, right_fq)
+            seen: set[tuple[str, str]] = set()
+
+            for src, dst, fk_desc in edges:
+                if (src == j.from_table and dst == j.to_table) or (
+                    src == j.to_table and dst == j.from_table
+                ):
+                    if "->" not in fk_desc:
+                        continue
+                    left_raw, right_raw = fk_desc.split("->", 1)
+
+                    # Align direction to the JoinExample from_table -> to_table
+                    if src == j.from_table and dst == j.to_table:
+                        left_col = left_raw
+                        right_col = right_raw
+                    else:
+                        # Edge is opposite direction; swap to match plan direction
+                        left_col = right_raw
+                        right_col = left_raw
+
+                    key = (left_col, right_col)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    raw_pairs.append(key)
+
+            if not raw_pairs:
+                steps.append(
+                    JoinPlanStep(
+                        from_table=j.from_table,
+                        to_table=j.to_table,
+                        on=[],
+                        relationship_type=j.relationship_type,
+                        purpose=j.business_purpose,
+                    )
+                )
+                continue
+
+            # Optional filtering by query tokens if multiple candidate relationships exist
+            if len(raw_pairs) > 1 and qtokens:
+
+                def _pair_score(p: tuple[str, str]) -> int:
+                    l_name = p[0].split(".")[-1]
+                    r_name = p[1].split(".")[-1]
+                    return int(bool(set(tokens_from_text(l_name)) & qtokens)) + int(
+                        bool(set(tokens_from_text(r_name)) & qtokens)
+                    )
+
+                scored = [(p, _pair_score(p)) for p in raw_pairs]
+                best_score = max(s for _p, s in scored)
+                if best_score > 0:
+                    raw_pairs = [p for p, s in scored if s == best_score]
+
+            # Order pairs by referenced PK order, then FK order on source, then name
+            to_tp = explorer.card.tables.get(j.to_table)
+            to_pk_idx: dict[str, int] = {}
+            if to_tp and to_tp.pk_cols:
+                to_pk_idx = {col: i for i, col in enumerate(to_tp.pk_cols)}
+
+            from_tp = explorer.card.tables.get(j.from_table)
+            fk_order_idx: dict[str, int] = {}
+            if from_tp and from_tp.fks:
+                order = [col for col, ref_tbl, _ref_col in from_tp.fks if ref_tbl == j.to_table]
+                fk_order_idx = {col: i for i, col in enumerate(order)}
+
+            def _order_key(
+                p: tuple[str, str],
+                _to_pk_idx: dict[str, int] = to_pk_idx,
+                _fk_order_idx: dict[str, int] = fk_order_idx,
+            ) -> tuple[int, int, str, str]:
+                left_col = p[0].split(".")[-1]
+                right_col = p[1].split(".")[-1]
+                pk_pos = _to_pk_idx.get(right_col, 10_000)
+                fk_pos = _fk_order_idx.get(left_col, 10_000)
+                return (pk_pos, fk_pos, right_col, left_col)
+
+            ordered = sorted(raw_pairs, key=_order_key)
+
+            # Convert to typed JoinOnPair
+            on_pairs = [JoinOnPair(left=left, right=right) for (left, right) in ordered]
+
+            steps.append(
+                JoinPlanStep(
+                    from_table=j.from_table,
+                    to_table=j.to_table,
+                    on=on_pairs,
+                    relationship_type=j.relationship_type,
+                    purpose=j.business_purpose,
+                )
             )
-            for j in join_examples[:limit]
-        ]
+
+        return steps
 
     @staticmethod
     def _build_group_by_candidates(

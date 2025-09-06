@@ -252,7 +252,7 @@ sequenceDiagram
     Note over LLM,SC: get_database_overview Flow
     LLM->>MCP: get_database_overview()
     MCP->>SC: get_overview()
-    SC-->>MCP: DatabaseOverview
+    SC-->>MCP: DatabaseSummary
     MCP-->>LLM: High-level schema summary
 
     Note over LLM,SC: get_table_info Flow
@@ -284,7 +284,12 @@ sequenceDiagram
 
 #### 2. `get_database_overview()`
 - **Purpose**: High-level database overview with business context
-- **Output**: `DatabaseOverview` with subject areas, table counts, and summaries
+- **Output**: `DatabaseSummary` with:
+  - `database_name`, `database_type`, `total_tables`, `schemas`
+  - `key_subject_areas` (compact map name → summary)
+  - `subject_areas` (optional structured areas when requested)
+  - `most_important_tables` (centrality-ranked, audit/archive de-prioritized)
+  - `common_patterns` (e.g., star schema, normalized, time-series, analytics)
 
 #### 3. `get_table_info(table_key, include_samples=True, column_role_filter=None, ...)`
 - **Purpose**: Detailed table information optimized for SQL development
