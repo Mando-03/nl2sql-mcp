@@ -1,8 +1,8 @@
 """MCP tool registration for direct SQL execution (execute_query).
 
-Provides a single tool `execute_query(sql: str)` that normalizes/transpiles,
-validates, executes a SELECT with row and cell truncation, and returns a
-typed result payload.
+Provides a single tool `execute_query(sql: str)` that validates and transpiles per active dialect,
+executes SELECT-only queries with enforced row/cell truncation, and returns a typed result payload
+including guidance fields (assist_notes, validation_notes, next_action).
 """
 
 from __future__ import annotations
@@ -28,8 +28,9 @@ def register_execute_query_tool(
 ) -> None:
     """Register a safe SQL execution tool.
 
-    Executes a SELECT with automatic dialect handling, SQL validation, and
-    truncation safeguards; returns typed results and actionable guidance.
+    Executes SELECT-only statements with automatic dialect validation/transpilation,
+    enforces row/cell truncation, and returns typed results with next_action, assist_notes,
+    and validation_notes to guide refinement.
     """
 
     mgr = SchemaServiceManager.get_instance()
@@ -42,12 +43,18 @@ def register_execute_query_tool(
             str,
             Field(
                 description=(
-                    "SQL statement to execute. SELECT-only; non-SELECT returns a structured error."
+                    "SELECT-only SQL to execute. Validates and transpiles per active dialect; "
+                    "enforces row/cell truncation. On error, results include assist_notes, "
+                    "validation_notes, and next_action."
                 )
             ),
         ],
     ) -> ExecuteQueryResult:  # pyright: ignore[reportUnusedFunction]
-        """Safely execute a SELECT and return results with guidance for next steps."""
+        """Validate and transpile SELECT-only SQL, execute with row/cell truncation, and return typed results.
+
+        On error, use assist_notes, validation_notes, and next_action to refine; if truncated or
+        rows reach the limit, paginate or aggregate as appropriate.
+        """
 
         preview = sql[:MAX_QUERY_DISPLAY] + ("..." if len(sql) > MAX_QUERY_DISPLAY else "")
         _logger.info("execute_query: %s", preview)

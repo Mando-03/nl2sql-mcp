@@ -47,8 +47,10 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
             str,
             Field(
                 description=(
-                    "User's question or goal in natural language. Example: "
-                    "'Total revenue by month for 2024 for the US region.'"
+                    "Before calling, rewrite the user's question into a concise request optimized "
+                    "for schema vector searching: focus on the analytical intent and key entities "
+                    "or metrics, omitting superfluous details or context not beneficial for "
+                    "matching tables, columns, or values."
                 )
             ),
         ],
@@ -57,32 +59,39 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
             bool,
             Field(
                 description=(
-                    "When true, return an expanded plan: more relevant tables, more columns per "
-                    "table, a longer join plan with alternatives, broader group_by and filter "
-                    "candidates, and richer clarifications. When false, return a compact plan "
-                    "focused on top tables and a minimal join plan. Raw sample values are not "
-                    "included; use get_table_info for samples."
+                    "Default is false. When true, return an expanded plan: more relevant tables, "
+                    "more columns per table, a longer join plan with alternatives, broader "
+                    "group_by and filter candidates, and richer clarifications. When false, "
+                    "return a compact plan focused on top tables and a minimal join plan. Raw "
+                    "sample values are not included; use get_table_info for samples."
                 )
             ),
         ] = False,
         constraints: Annotated[
             dict[str, str | int | float | bool] | None,
-            Field(description=("Optional constraints (e.g., time_range, region, metric).")),
+            Field(
+                description=(
+                    "Pass user-supplied constraints exactly (e.g., time_range, region, metric). "
+                    "Do not invent or infer values; ask for clarification if uncertain."
+                )
+            ),
         ] = None,
         budget: Annotated[
             dict[str, int] | None,
             Field(
                 description=(
                     "Optional response-size caps. Keys: tables, columns_per_table, sample_values. "
-                    "Example: {tables: 5, columns_per_table: 20, sample_values: 3}."
+                    "Recommended defaults: full_detail=false and "
+                    "budget={tables:5, columns_per_table:20, sample_values:0}."
                 )
             ),
         ] = None,
     ) -> QuerySchemaResult:
         """Plan a SQL solution for a natural-language request.
 
-        Returns minimal schema context, a join plan, and a draft query so an LLM
-        can proceed directly to execution or ask for clarifications.
+        Produces relevant tables, join plan, filter candidates, selected columns, draft SQL,
+        clarifications, assumptions, confidence, and next action. If clarifications exist or
+        confidence < 0.6, surface those questions to the user before proceeding to execution.
         """
 
         preview = request[:MAX_QUERY_DISPLAY] + ("..." if len(request) > MAX_QUERY_DISPLAY else "")
@@ -130,7 +139,8 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
             int, Field(ge=1, description="Maximum number of subject areas to include", default=8)
         ] = 8,
     ) -> DatabaseSummary:
-        """Summarize schemas and key areas to orient query planning."""
+        """Provides high-level critical information (database dialect, schemas, subject areas,
+        important tables, and patterns) to help orient query planning."""
         _logger.info("Retrieving database overview")
         try:
             schema_service = await mgr.get_schema_service()
@@ -151,25 +161,41 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
         table_key: Annotated[str, Field(description="Fully qualified table name 'schema.table'")],
         include_samples: Annotated[
             bool,
-            Field(description="Include representative sample values for columns", default=True),
+            Field(
+                description=(
+                    "Include representative sample values for columns (useful for WHERE filters); "
+                    "limited by max_sample_values."
+                ),
+                default=True,
+            ),
         ] = True,
         column_role_filter: Annotated[
             list[Literal["metric", "date", "key", "category", "text"]] | None,
-            Field(description="If provided, only return columns with these business roles"),
+            Field(
+                description=(
+                    "If provided, only return columns with these business roles. Prefer "
+                    "['key','date','metric','category'] to keep results focused and payload small."
+                )
+            ),
         ] = None,
         max_sample_values: Annotated[
             int,
             Field(
                 ge=0,
-                description="Maximum samples per column when samples are included",
+                description="Maximum sample values per column when include_samples is true",
                 default=5,
             ),
         ] = 5,
         relationship_limit: Annotated[
-            int | None, Field(ge=0, description="Limit the number of relationships returned")
+            int | None,
+            Field(ge=0, description="Limit the number of relationships returned (PK/FK hints)"),
         ] = None,
     ) -> TableInfo:
-        """Explain a table's purpose, columns, relationships, and representative values."""
+        """Explain a table's purpose, columns, relationships, and representative values.
+
+        Use on the top 1-2 tables to confirm columns, datatypes, PK/FK joins, relationship
+        hints, and sample values for WHERE clauses.
+        """
         _logger.info("Retrieving table information for: %s", table_key)
         try:
             schema_service = await mgr.get_schema_service()
@@ -201,7 +227,9 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
         @mcp.tool
         async def find_tables(  # pyright: ignore[reportUnusedFunction]
             ctx: Context,
-            query: Annotated[str, Field(description="Intent/keywords to locate relevant tables")],
+            query: Annotated[
+                str, Field(description="Concise intent/keywords optimized for schema search")
+            ],
             limit: Annotated[
                 int, Field(default=10, ge=1, le=50, description="Maximum number of hits")
             ] = 10,
@@ -213,7 +241,7 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
                 float, Field(default=0.7, ge=0.0, le=1.0, description="Blend weight for combo")
             ] = 0.7,
         ) -> list[TableSearchHit]:
-            """Find relevant tables quickly by intent/keywords (debug)."""
+            """Find relevant tables quickly by intent/keywords (debug-only)."""
             preview = query[:MAX_QUERY_DISPLAY] + ("..." if len(query) > MAX_QUERY_DISPLAY else "")
             _logger.info("Finding tables for query: %s", preview)
             try:
@@ -235,7 +263,9 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
         @mcp.tool
         async def find_columns(  # pyright: ignore[reportUnusedFunction]
             ctx: Context,
-            keyword: Annotated[str, Field(description="Keyword to match columns")],
+            keyword: Annotated[
+                str, Field(description="Keyword to match column names and descriptions")
+            ],
             limit: Annotated[
                 int, Field(default=25, ge=1, le=200, description="Maximum number of hits")
             ] = 25,
@@ -243,7 +273,7 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
                 str | None, Field(description="Restrict search to a specific 'schema.table'")
             ] = None,
         ) -> list[ColumnSearchHit]:
-            """Locate columns for SELECT/WHERE scaffolding (debug)."""
+            """Locate columns for SELECT/WHERE scaffolding (debug-only)."""
             _logger.info("Finding columns for keyword: %s", keyword)
             try:
                 schema_service = await mgr.get_schema_service()
@@ -257,7 +287,11 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
 
     @mcp.tool
     async def get_init_status(_ctx: Context) -> InitStatus:  # pyright: ignore[reportUnusedFunction]
-        """Get initialization status with descriptive progression for LLMs/UIs."""
+        """Initialization status for first-step readiness checks.
+
+        Use this as your first action. If phase != READY, relay the description to the user and
+        instruct them to retry later.
+        """
         state = mgr.status()
         deep = mgr.enrichment_status()
 
