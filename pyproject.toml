@@ -58,7 +58,6 @@ Homepage = "https://github.com/jb3cloud/nl2sql-mcp"
 Repository = "https://github.com/jb3cloud/nl2sql-mcp"
 Documentation = "https://github.com/jb3cloud/nl2sql-mcp#readme"
 Issues = "https://github.com/jb3cloud/nl2sql-mcp/issues"
-Changelog = "https://github.com/jb3cloud/nl2sql-mcp/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["setuptools>=69", "wheel"]
