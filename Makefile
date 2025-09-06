@@ -11,6 +11,14 @@ INGRESS ?= external
 TARGET_PORT ?= 8000
 ENV_FILE ?= .env
 
+# Container build variables
+IMAGE_NAME ?= $(APP_NAME)
+IMAGE_TAG ?= local
+DOCKERFILE ?= Dockerfile
+BUILD_CONTEXT ?= .
+HOST_PORT ?= 8000
+CONTAINER_NAME ?= $(IMAGE_NAME)
+
 # Always use `uv run` when invoking Python tooling
 UV := uv run
 
@@ -75,3 +83,18 @@ publish: preflight ## Build from source and deploy with Azure Container Apps
 		$(if $(LOCATION),--location "$(LOCATION)",) \
 		$(if $(ENV_ARGS),--env-vars $$ENV_ARGS,)
 	@echo "Publish complete."
+
+.PHONY: docker
+docker: ## Build a local Docker image (tag: $(IMAGE_NAME):$(IMAGE_TAG))
+	@echo "Building Docker image '$(IMAGE_NAME):$(IMAGE_TAG)' using $(DOCKERFILE) ..."
+	@DOCKER_BUILDKIT=1 docker build -t "$(IMAGE_NAME):$(IMAGE_TAG)" -f "$(DOCKERFILE)" "$(BUILD_CONTEXT)"
+	@echo "Image built: $(IMAGE_NAME):$(IMAGE_TAG)"
+
+.PHONY: docker-run
+docker-run: ## Run local image with env and port mapping
+	@echo "Running Docker image '$(IMAGE_NAME):$(IMAGE_TAG)' as container '$(CONTAINER_NAME)' ..."
+	@docker run --rm -it \
+		--name "$(CONTAINER_NAME)" \
+		--env-file "$(ENV_FILE)" \
+		-p "$(HOST_PORT):$(TARGET_PORT)" \
+		"$(IMAGE_NAME):$(IMAGE_TAG)"
