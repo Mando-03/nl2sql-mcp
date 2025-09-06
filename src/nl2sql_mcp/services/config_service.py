@@ -13,6 +13,7 @@ import os
 
 import sqlalchemy as sa
 
+from nl2sql_mcp.schema_tools.constants import Constants
 from nl2sql_mcp.schema_tools.models import SchemaExplorerConfig
 from nl2sql_mcp.schema_tools.mssql_spatial import register_mssql_spatial_types
 
@@ -84,9 +85,16 @@ class ConfigService:
         Returns:
             SchemaExplorerConfig optimized for query analysis operations
         """
+        # Allow overriding the embedding model via environment variable.
+        # Falls back to project default when unset.
+        model_name = os.getenv(
+            "NL2SQL_MCP_EMBEDDING_MODEL",
+            Constants.DEFAULT_EMBEDDING_MODEL,
+        )
         return SchemaExplorerConfig(
             per_table_rows=50,  # Enough for good samples
             sample_timeout=15,
+            model_name=model_name,
             build_column_index=True,
             max_cols_for_embeddings=20,
             expander="fk_following",

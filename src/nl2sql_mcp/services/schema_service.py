@@ -108,9 +108,12 @@ class SchemaService:
             self._query_engine = QueryEngine(card, config, embedder=self.embedder)
             self._qe_reflection_hash = card.reflection_hash
             self._qe_config_fingerprint = cfg_fp
-        # basedpyright: assure non-None before returning
-        assert self._query_engine is not None
-        return self._query_engine
+        # Guard non-None before returning (no runtime asserts in production)
+        qe = self._query_engine
+        if qe is None:  # pragma: no cover - defensive
+            msg = "QueryEngine not initialized"
+            raise RuntimeError(msg)
+        return qe
 
     # Public hook used by the manager to warm indices after init/enrichment.
     def prime_query_resources(self) -> None:

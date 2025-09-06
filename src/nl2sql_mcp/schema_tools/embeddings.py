@@ -1,11 +1,12 @@
 """Embedding functionality for semantic search and analysis.
 
-This module provides embedding capabilities for semantic similarity
-search over database schema elements. It includes embedding model wrappers,
-semantic indexing, and token-based lexicon learning for dynamic query expansion.
+This module provides embedding capabilities for semantic similarity search over
+database schema elements. It includes a light wrapper over ``model2vec``
+(`StaticModel`) for fast CPU-only sentence embeddings, an Annoy-backed semantic
+index, and a token-lexicon learner used for query expansion.
 
 Classes:
-- Embedder: Wrapper for sentence transformer embedding models
+- Embedder: Wrapper for Model2Vec ``StaticModel`` embedding models
 - SemanticIndex: Annoy-backed semantic similarity index
 - TokenLexiconLearner: Learns token embeddings for query expansion
 """
@@ -13,71 +14,72 @@ Classes:
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from typing import TYPE_CHECKING
+from typing import Protocol, cast, runtime_checkable
 
 from annoy import AnnoyIndex
 from fastmcp.utilities.logging import get_logger
+from model2vec import StaticModel
 import numpy as np
 
 from .utils import tokens_from_text
 
-if TYPE_CHECKING:
-    from sentence_transformers import SentenceTransformer
-
 # Logger
 _logger = get_logger("schema_explorer.embeddings")
 
-# Check for optional dependencies
-_has_sentence_transformers: bool = False
 
-try:
-    from sentence_transformers import SentenceTransformer
+@runtime_checkable
+class _EmbeddingBackend(Protocol):
+    """Protocol for embedding backends.
 
-    _has_sentence_transformers = True
-except ImportError:
-    SentenceTransformer = None  # type: ignore[misc,assignment]
+    Any embedding backend must implement an ``encode`` method compatible with
+    Model2Vec's interface, returning a 2D NumPy array of dtype ``float32``.
+    """
+
+    def encode(self, texts: list[str]) -> np.ndarray:  # pragma: no cover - protocol
+        ...
 
 
 class Embedder:
-    """Wrapper for sentence transformer embedding models.
+    """Wrapper for Model2Vec static embedding models.
 
-    This class provides a consistent interface for text embedding using
-    sentence transformer models. It handles model initialization and
-    provides batch encoding capabilities.
+    This class provides a consistent interface for text embeddings using
+    Model2Vec's CPU-optimized ``StaticModel`` loaded from the Hugging Face Hub.
 
     Attributes:
-        model: SentenceTransformer model instance
+        _backend: Concrete embedding backend implementing ``_EmbeddingBackend``
     """
 
-    def __init__(self, model_name: str = "BAAI/bge-small-en-v1.5") -> None:
-        """Initialize the embedder with a sentence transformer model.
+    def __init__(self, model_name: str = "minishlab/potion-retrieval-8M") -> None:
+        """Initialize the embedder with a Model2Vec model.
 
         Args:
-            model_name: Name or path of the sentence transformer model
-            Defaults to https://huggingface.co/BAAI/bge-small-en-v1.5
+            model_name: Name or path of the Model2Vec model to load. Defaults to
+                ``minishlab/potion-retrieval-8M``.
 
         Raises:
-            RuntimeError: If sentence-transformers is not installed
+            RuntimeError: If ``model2vec`` is not installed or fails to load.
         """
-        if not _has_sentence_transformers:
-            error_msg = "sentence-transformers not installed. pip install sentence-transformers"
-            raise RuntimeError(error_msg)
-        self.model = SentenceTransformer(model_name)  # type: ignore[misc]
+        backend = StaticModel.from_pretrained(model_name)
+        # Cast to the minimal protocol to keep strict typing without relying on
+        # third-party type hints.
+        self._backend: _EmbeddingBackend = cast(_EmbeddingBackend, backend)
+        _logger.info("Embedding backend: model2vec model=%s", model_name)
 
-    def encode(self, texts: list[str], batch_size: int = 64) -> np.ndarray:
+    def encode(self, texts: list[str]) -> np.ndarray:
         """Encode texts into embedding vectors.
 
         Args:
             texts: List of text strings to encode
-            batch_size: Batch size for processing
 
         Returns:
-            NumPy array of embedding vectors with shape (len(texts), embedding_dim)
+            NumPy array of embedding vectors with shape ``(len(texts), dim)`` and
+            dtype ``float32``.
         """
-        return np.array(
-            self.model.encode(texts, batch_size=batch_size, show_progress_bar=False),  # type: ignore[misc]
-            dtype="float32",
-        )
+        # Model2Vec performs its own internal batching; return float32 for ANN.
+        vecs = self._backend.encode(list(texts))
+        if vecs.dtype != np.float32:
+            vecs = vecs.astype("float32", copy=False)
+        return vecs
 
 
 class SemanticIndex:

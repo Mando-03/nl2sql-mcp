@@ -19,7 +19,7 @@ class Constants:
     DEFAULT_TIMEOUT_SEC: Final[int] = 5
     DEFAULT_TOP_K_TABLES: Final[int] = 8
     DEFAULT_MIN_AREA_SIZE: Final[int] = 3
-    DEFAULT_EMBEDDING_MODEL: Final[str] = "sentence-transformers/all-MiniLM-L6-v2"
+    DEFAULT_EMBEDDING_MODEL: Final[str] = "minishlab/potion-retrieval-8M"
     DEFAULT_MAX_COLS_FOR_EMBEDDINGS: Final[int] = 20
     DEFAULT_VALUE_CONSTRAINT_THRESHOLD: Final[int] = 20
 

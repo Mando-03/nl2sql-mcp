@@ -37,7 +37,9 @@ Service layer that centralizes configuration, schema exploration orchestration, 
 
 - Creates the engine and fingerprints the DB URL.
 - Builds a global `SchemaExplorer` by reflecting, sampling, profiling, graphing, and summarizing.
-- Builds a global `Embedder` when `sentence-transformers` is available; otherwise disables embeddings gracefully.
+- Builds a global `Embedder` using `model2vec` (StaticModel). If the
+  dependency is unavailable, embeddings are disabled gracefully and the system
+  falls back to lexical retrieval.
 - Publishes readiness and error details for MCP clients via `get_init_status`.
 
 ## Environment
