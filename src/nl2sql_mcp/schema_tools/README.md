@@ -414,7 +414,7 @@ class SchemaExplorerConfig:
     exclude_schemas: list[str] | None = None
     per_table_rows: int = 100
     sample_timeout: int = 5
-    model_name: str = "minishlab/potion-retrieval-8M"
+    model_name: str = "minishlab/potion-base-8M"
     build_column_index: bool = True
     max_cols_for_embeddings: int = 20
     expander: str = "fk_following"

@@ -49,12 +49,12 @@ class Embedder:
         _backend: Concrete embedding backend implementing ``_EmbeddingBackend``
     """
 
-    def __init__(self, model_name: str = "minishlab/potion-retrieval-8M") -> None:
+    def __init__(self, model_name: str = "minishlab/potion-base-8M") -> None:
         """Initialize the embedder with a Model2Vec model.
 
         Args:
             model_name: Name or path of the Model2Vec model to load. Defaults to
-                ``minishlab/potion-retrieval-8M``.
+                ``minishlab/minishlab/potion-base-8M``.
 
         Raises:
             RuntimeError: If ``model2vec`` is not installed or fails to load.
