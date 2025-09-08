@@ -59,13 +59,14 @@ class QueryEngine:
         self.config = config
         self.embedder = embedder
 
-        # Initialize embedder if not provided
+        # Initialize embedder if not provided. Fail-soft to lexical-only when
+        # the embedding backend cannot be created.
         if not self.embedder:
             try:
                 self.embedder = Embedder(model_name=config.model_name)
                 _logger.info("Initialized embedder with model: %s", config.model_name)
-            except RuntimeError as e:
-                _logger.warning("Embeddings disabled: %s", e)
+            except (RuntimeError, OSError, FileNotFoundError, ValueError) as e:
+                _logger.warning("Embeddings disabled due to initialization error: %s", e)
                 self.embedder = None
 
         # Component instances

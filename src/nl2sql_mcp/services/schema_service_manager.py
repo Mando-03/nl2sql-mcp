@@ -187,8 +187,10 @@ class SchemaServiceManager:
                 global_embedder = Embedder(model_name=config.model_name)
                 type(self).GLOBAL_EMBEDDER = global_embedder
                 self._logger.info("Global embedder built with model: %s", config.model_name)
-            except RuntimeError as e:
-                self._logger.warning("Embeddings disabled: %s", e)
+            except (RuntimeError, OSError, FileNotFoundError, ValueError) as e:
+                # Gracefully degrade when the embedding backend cannot be created.
+                # This preserves basic functionality (lexical retrieval) instead of failing.
+                self._logger.warning("Embeddings disabled due to initialization error: %s", e)
                 type(self).GLOBAL_EMBEDDER = None
         else:
             self._logger.info("Using existing global embedder")
