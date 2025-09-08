@@ -10,7 +10,9 @@ COPY --from=ghcr.io/astral-sh/uv:0.8.12 /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 ENV UV_LINK_MODE=copy \
-    UV_COMPILE_BYTECODE=1
+    UV_COMPILE_BYTECODE=1 \
+    HF_HOME=/opt/hf-cache \
+    XDG_CACHE_HOME=/tmp
 
 # 1) Install deps (no project). Copy only lock + pyproject to keep this layer warm.
 COPY pyproject.toml fastmcp.json uv.lock ./
@@ -18,25 +20,14 @@ RUN uv sync --locked --no-cache --no-install-project --no-editable --extra drive
 
 # 2) Add source and perform final sync to install the project (non-editable) into .venv
 COPY src/ ./src/
+COPY scripts/prefetch_embeddings.py ./scripts/prefetch_embeddings.py
 RUN uv sync --locked --no-cache --no-editable --extra drivers
 RUN uv pip install --no-cache --no-deps --no-build-isolation .
 
-# 3) Pre-fetch Model2Vec model weights into a deterministic cache path so
-#    runtime startup doesn’t spend time downloading from the Hub.
-#    We intentionally set HF_HOME (preferred by huggingface_hub) to a fixed
-#    location and keep it consistent in runtime. The `from_pretrained` call
-#    will populate this cache without bundling unnecessary files.
-ARG EMBED_MODEL="minishlab/potion-base-8M"
-ENV HF_HOME=/opt/hf-cache \
-    NL2SQL_MCP_EMBEDDING_MODEL=${EMBED_MODEL}
-RUN uv run python - <<'PY'
-import os
-from model2vec import StaticModel
+# 3) Prefetch the default embedding model into the image cache
+RUN mkdir -p /opt/hf-cache \
+ && uv run python /app/scripts/prefetch_embeddings.py
 
-name = os.environ.get("NL2SQL_MCP_EMBEDDING_MODEL", "minishlab/potion-base-8M")
-StaticModel.from_pretrained(name)
-print(f"Pre-fetched: {name}")
-PY
 
 # ---------- runtime ----------
 FROM python:${SLIM_PYTHON_VERSION} AS runtime
@@ -72,19 +63,17 @@ RUN set -eux; \
 
 # Bring over the built virtualenv and application sources; keep ownership minimal
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
+COPY --from=builder --chown=app:app /opt/hf-cache /opt/hf-cache
 COPY --chown=app:app fastmcp.json /app/fastmcp.json
 COPY --chown=app:app src/ /app/src/
 COPY --chown=app:app scripts/healthcheck.py /app/scripts/healthcheck.py
-# Bring the pre-populated Hugging Face cache from the builder stage and ensure
-# it’s owned by the runtime user.
-COPY --from=builder --chown=app:app /opt/hf-cache /opt/hf-cache
 
 # Prefer venv shims first; avoid runtime bytecode writes and ensure unbuffered logs
 ENV PATH="/app/.venv/bin:$PATH" \
     UV_CACHE_DIR="/tmp/uv-cache" \
     XDG_CACHE_HOME="/tmp" \
     HF_HOME="/opt/hf-cache" \
-    NL2SQL_MCP_EMBEDDING_MODEL=${EMBED_MODEL} \
+    NL2SQL_MCP_EMBEDDING_MODEL="minishlab/potion-base-8M" \
     PYTHONPATH="/app/src:${PYTHONPATH}" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
