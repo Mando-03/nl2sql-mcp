@@ -81,7 +81,7 @@ publish: preflight ## Build from source and deploy with Azure Container Apps
 		$(if $(RESOURCE_GROUP),--resource-group "$(RESOURCE_GROUP)",) \
 		$(if $(ENVIRONMENT),--environment "$(ENVIRONMENT)",) \
 		$(if $(LOCATION),--location "$(LOCATION)",) \
-		$(if $(ENV_ARGS),--env-vars $$ENV_ARGS,)
+		$(if $(ENV_ARGS),--env-vars $(ENV_ARGS),)
 	@echo "Publish complete."
 
 .PHONY: docker
