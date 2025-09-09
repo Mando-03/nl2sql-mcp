@@ -52,6 +52,11 @@ class RetrievalEngine:
         column_index: SemanticIndex | None = None,
         lexicon_learner: TokenLexiconLearner | None = None,
         lexical_cache: dict[str, dict[str, float]] | None = None,
+        *,
+        exclude_archives: bool = False,
+        lexicon_top_n: int = 16,
+        lexicon_min_df: int = 2,
+        morph_min_len: int = 3,
     ) -> None:
         """Initialize the retrieval engine.
 
@@ -71,9 +76,10 @@ class RetrievalEngine:
         self.lexical_cache = lexical_cache or {}
 
         # Tunable constants for token expansion and priors
-        self._MORPH_MIN_LEN: int = 3
-        self._LEXICON_TOP_N: int = 16
-        self._LEXICON_MIN_DF: int = 2
+        self._MORPH_MIN_LEN: int = max(1, morph_min_len)
+        self._LEXICON_TOP_N: int = max(1, lexicon_top_n)
+        self._LEXICON_MIN_DF: int = max(1, lexicon_min_df)
+        self._EXCLUDE_ARCHIVES: bool = exclude_archives
 
     def _filter_archive_priority(
         self, items: list[tuple[str, float]], k: int
@@ -92,6 +98,9 @@ class RetrievalEngine:
         """
         non_archive = [(key, score) for key, score in items if not is_archive_label(key)]
         archive = [(key, score) for key, score in items if is_archive_label(key)]
+
+        if self._EXCLUDE_ARCHIVES and non_archive:
+            return non_archive[:k]
 
         result = non_archive[:k]
         if len(result) < k:

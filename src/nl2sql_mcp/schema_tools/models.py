@@ -253,3 +253,8 @@ class SchemaExplorerConfig:
     fast_startup: bool = False
     max_tables_at_startup: int | None = None
     max_sampled_columns: int = 20
+    # Retrieval/expansion tuning
+    strict_archive_exclude: bool = True
+    lexicon_top_n: int = 16
+    lexicon_min_df: int = 2
+    morph_min_len: int = 3

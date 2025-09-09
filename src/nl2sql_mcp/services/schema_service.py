@@ -167,6 +167,15 @@ class SchemaService:
             retrieval_results = query_engine.retrieval_engine.retrieve_combined(
                 query, k=max_tables * 2, alpha=alpha
             )
+        elif approach is RetrievalApproach.EMBEDDING_TABLE:
+            # Fallback to lexical if embeddings unavailable or index missing
+            rt = query_engine.retrieval_engine
+            if rt and (query_engine.embedder is None or rt.table_index is None):
+                retrieval_results = rt.retrieve(query, RetrievalApproach.LEXICAL, k=max_tables * 2)
+            else:
+                retrieval_results = query_engine.retrieval_engine.retrieve(
+                    query, approach, k=max_tables * 2
+                )
         else:
             retrieval_results = query_engine.retrieval_engine.retrieve(
                 query, approach, k=max_tables * 2

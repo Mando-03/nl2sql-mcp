@@ -54,8 +54,7 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
                 )
             ),
         ],
-        *,
-        full_detail: Annotated[
+        full_detail: Annotated[  # noqa: FBT002
             bool,
             Field(
                 description=(
@@ -113,12 +112,21 @@ def register_intelligence_tools(mcp: FastMCP, manager: SchemaServiceManager | No
         if constraints:
             _logger.info("Constraints keys provided: %s", ",".join(sorted(constraints.keys())))
 
+        # Defaults: embeddings-first, minimal detail, tight budgets.
+        default_approach = RetrievalApproach.EMBEDDING_TABLE
+        default_detail = "full" if full_detail else "minimal"
+        # Tighter defaults if caller didn't pass a budget
+        if not budget:
+            max_tables = min(max_tables, 2)
+            max_columns_per_table = min(max_columns_per_table, 6)
+            max_sample_values = 0
+
         result = schema_service.analyze_query_schema(
             request,
             max_tables,
-            approach=RetrievalApproach.COMBINED,
+            approach=default_approach,
             alpha=0.7,
-            detail_level=("full" if full_detail else "standard"),
+            detail_level=default_detail,
             include_samples=False,
             max_sample_values=max_sample_values,
             max_columns_per_table=max_columns_per_table,

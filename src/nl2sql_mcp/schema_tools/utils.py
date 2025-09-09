@@ -134,17 +134,36 @@ def default_excluded_schemas(dialect_name: str) -> list[str]:
 
 
 def is_archive_label(label: str) -> bool:
-    """Check if a table/column label indicates archive/historical data.
+    """Check if a table/column label indicates archive, snapshot, or temp data.
 
-    Uses pattern matching to detect table or column names that suggest
-    archival or historical data storage.
+    The check is token-based and tolerant to common naming variations:
+    - Suffixes: Orders_Archive, CitiesHistory, InvoicesBackup2, Temp
+    - Prefixes: Archive_Orders, History_Customers, Snapshot_2023_01
+    - CamelCase and year-suffixed: OrdersHistory2021, CustomersArchive2020
 
     Args:
         label: Either "schema.table" or "schema.table::column" format
 
     Returns:
-        True if the label appears to indicate archive/historical data
+        True if the label appears to indicate archive/snapshot/temp data
     """
-    # Extract the table name from the label
     table_part = label.split("::")[0].split(".")[-1]
-    return bool(Constants.ARCHIVE_PATTERN.search(table_part))
+
+    # Fast path: legacy suffix regex
+    if Constants.ARCHIVE_PATTERN.search(table_part):
+        return True
+
+    # Token-based detection with startswith handling for year/number suffixes
+    toks = tokens_from_text(table_part)
+    for t in toks:
+        # direct match
+        if t in Constants.ARCHIVE_TOKENS:
+            return True
+        # startswith canonical token followed by digits or separators folded into the token
+        for canon in Constants.ARCHIVE_TOKENS:
+            if t.startswith(canon) and len(t) > len(canon):
+                # Accept if the remainder is digits (e.g., history2021, archive2020)
+                rest = t[len(canon) :]
+                if rest.isdigit():
+                    return True
+    return False

@@ -113,6 +113,10 @@ class QueryEngine:
             column_index=self.column_index,
             lexicon_learner=self.lexicon_learner,
             lexical_cache=self._lexical_cache,
+            exclude_archives=self.config.strict_archive_exclude,
+            lexicon_top_n=self.config.lexicon_top_n,
+            lexicon_min_df=self.config.lexicon_min_df,
+            morph_min_len=self.config.morph_min_len,
         )
 
         self.graph_expander = GraphExpander(

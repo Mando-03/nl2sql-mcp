@@ -173,6 +173,19 @@ class QuerySchemaResultBuilder:
                 draft_sql = "\n".join(lines)
                 assumptions.append("Used LEFT JOINs for safety where relationships exist.")
 
+        # Count-only fallback: if the query is a simple count intent and we have
+        # a clear anchor table, emit a minimal COUNT(*) even when clarifications
+        # exist (e.g., about joins). This improves usability for simple asks.
+        if not draft_sql:
+            qtokens = set(tokens_from_text(query))
+            count_signals = {"count", "how", "many", "number"}
+            is_count_intent = bool(count_signals & qtokens)
+            anchor = main_table or (selected_tables[0] if selected_tables else None)
+            if is_count_intent and anchor:
+                draft_sql = f"SELECT COUNT(*) AS count FROM {anchor}"
+                # For single-table COUNT queries, no need for further clarification.
+                clarifications = []
+
         status: Literal["ok", "needs_input", "error"] = "ok"
         next_action: (
             Literal[

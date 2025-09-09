@@ -31,6 +31,22 @@ class Constants:
     ARCHIVE_PATTERN: Final[re.Pattern[str]] = re.compile(
         r"(archive|archived|hist|history|backup|bak|old|tmp|temp)$", re.IGNORECASE
     )
+    # Canonical archive/admin tokens used for token-based detection.
+    ARCHIVE_TOKENS: Final[frozenset[str]] = frozenset(
+        {
+            "archive",
+            "archived",
+            "hist",
+            "history",
+            "backup",
+            "bak",
+            "snapshot",
+            "snap",
+            "temp",
+            "tmp",
+            "old",
+        }
+    )
 
     # Semantic hints for type detection
     DATE_TYPE_HINTS: Final[frozenset[str]] = frozenset({"date", "datetime", "time", "timestamp"})

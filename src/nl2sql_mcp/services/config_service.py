@@ -105,6 +105,11 @@ class ConfigService:
             fast_startup=True,
             max_tables_at_startup=300,
             max_sampled_columns=15,
+            # Retrieval/expansion tuning defaults
+            strict_archive_exclude=True,
+            lexicon_top_n=16,
+            lexicon_min_df=2,
+            morph_min_len=3,
         )
 
     # Unused specialized config helpers removed to reduce API surface
