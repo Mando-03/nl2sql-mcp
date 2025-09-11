@@ -10,14 +10,14 @@
 ## Setup, Build & Run
 - Install deps: `uv sync`
 - Lint: `uv run ruff check .` (format: `uv run ruff format .`)
-- Type check: `uv run basedpyright`
+- Type check: `uv run pyright`
 - Tests: `uv run pytest -q`
 - Run MCP server: `uv run nl2sql-mcp` (entrypoint) or `uv run python -m nl2sql_mcp.server`
 - Optional: set `NL2SQL_MCP_DEBUG_TOOLS=1` to also expose `find_tables` and `find_columns`.
 
 ## Coding Style & Naming
 - Python 3.13, spaces, max line length 99, double quotes.
-- Type hints required; strict type checking via basedpyright.
+- Type hints required; strict type checking via pyright.
 - Naming: modules/functions `snake_case`, classes `PascalCase`, constants `UPPER_SNAKE_CASE`.
 - Keep imports sorted; follow ruff rules configured in `pyproject.toml`.
 
@@ -30,7 +30,7 @@
 ## Commit & Pull Request Guidelines
 - Commits: use Conventional Commits where practical (e.g., `feat:`, `fix:`, `chore:`).
 - PRs must include: clear description, rationale, before/after notes, linked issues, and test coverage or harness output when applicable.
-- CI expectations: lint (`ruff`), type check (`basedpyright`), and tests must pass.
+- CI expectations: lint (`ruff`), type check (`pyright`), and tests must pass.
 
 ## Security & Configuration
 - Required env: `NL2SQL_MCP_DATABASE_URL` (see `.env.example`). Do not commit secrets; use `.env` locally.

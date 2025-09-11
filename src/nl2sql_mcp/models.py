@@ -192,7 +192,7 @@ class QuerySchemaResult(BaseModel):
         default=None, description="Likely main/fact table to anchor the query"
     )
     join_plan: list[JoinPlanStep] = Field(
-        default_factory=list, description="Structured join steps"
+        default_factory=list[JoinPlanStep], description="Structured join steps"
     )
     group_by_candidates: list[str] = Field(
         default_factory=list, description="Candidate columns to GROUP BY"

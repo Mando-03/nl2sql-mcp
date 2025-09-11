@@ -31,4 +31,3 @@ from nl2sql_mcp.schema_tools.utils import is_archive_label
 )
 def test_is_archive_label(label: str, expected: bool) -> None:
     assert is_archive_label(label) is expected
-
