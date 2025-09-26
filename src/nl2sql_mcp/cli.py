@@ -20,7 +20,6 @@ _logger = get_logger(__name__)
 
 def main() -> None:
     """Start the nl2sql-mcp FastMCP server via CLI."""
-    mcp.run()
     try:
         mcp.run()
     except KeyboardInterrupt:
