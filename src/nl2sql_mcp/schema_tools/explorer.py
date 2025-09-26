@@ -121,7 +121,7 @@ class SchemaExplorer:
         """
         return hashlib.sha256(url.encode("utf-8")).hexdigest()[:10]
 
-    def build_index(self, timings: dict[str, float] | None = None) -> SchemaCard:
+    def build_index(self, timings: dict[str, float] | None = None) -> SchemaCard:  # noqa: PLR0912
         """Build complete schema index with all analysis components.
 
         Performs comprehensive schema analysis including reflection, sampling,
@@ -197,10 +197,46 @@ class SchemaExplorer:
                         column.fk_ref = (ref_table, ref_col)
 
         # Step 3: Data sampling and profiling
-        _logger.info("Starting data sampling and profiling...")
+        _logger.info(
+            (
+                "Starting data sampling and profiling: per_table_rows=%d "
+                "max_sampled_columns=%d timeout=%ds"
+            ),
+            self.config.per_table_rows,
+            self.config.max_sampled_columns,
+            self.config.sample_timeout,
+        )
         sampling_start = now()
-        self._sample_and_profile_tables(tables)
+        counts_by_table = self._sample_and_profile_tables(tables)
         timings["sample_profile"] = now() - sampling_start
+
+        # Minimal heartbeat: sampling/profiling stats
+        try:
+            tables_count = len(tables)
+            rows_sampled_total = sum(int(tp.n_rows_sampled or 0) for tp in tables.values())
+            avg_rows = (float(rows_sampled_total) / tables_count) if tables_count else 0.0
+            _logger.info(
+                "sample_profile: tables=%d rows_sampled=%d avg_rows=%.1f",
+                tables_count,
+                rows_sampled_total,
+                avg_rows,
+            )
+            # Aggregate coverage over selected columns for sampling
+            total_cols_selected = sum(int(v) for v in counts_by_table.values())
+            avg_cols = (float(total_cols_selected) / tables_count) if tables_count else 0.0
+            max_cols = max(counts_by_table.values()) if counts_by_table else 0
+            _logger.info(
+                (
+                    "sample_coverage: tables=%d total_cols_selected=%d "
+                    "avg_cols_per_table=%.1f max_cols_per_table=%d"
+                ),
+                tables_count,
+                total_cols_selected,
+                avg_cols,
+                max_cols,
+            )
+        except Exception:  # noqa: BLE001 - observability-only
+            _logger.debug("sample_profile heartbeat logging failed", exc_info=True)
 
         # Step 4: Graph analysis and community detection
         _logger.info("Building relationship graph and detecting communities...")
@@ -219,6 +255,20 @@ class SchemaExplorer:
             node: communities.get(node, -1) for node in relationship_graph.nodes()
         }
         timings["graph_communities"] = now() - graph_start
+
+        # Minimal heartbeat: graph/community stats
+        try:
+            nodes = int(relationship_graph.number_of_nodes())
+            edges = int(relationship_graph.number_of_edges())
+            community_count = len(set(communities.values())) if communities else 0
+            _logger.info(
+                "graph: nodes=%d edges=%d communities=%d",
+                nodes,
+                edges,
+                community_count,
+            )
+        except Exception:  # noqa: BLE001 - observability-only
+            _logger.debug("graph heartbeat logging failed", exc_info=True)
 
         # Step 5: Subject area merging and assignment
         merged_communities = self._merge_subject_areas(
@@ -268,6 +318,22 @@ class SchemaExplorer:
 
         timings["classify_summarize"] = now() - classification_start
 
+        # Minimal heartbeat: classification/summaries stats
+        try:
+            total = len(tables)
+            fact = sum(1 for tp in tables.values() if tp.archetype == "fact")
+            dimension = sum(1 for tp in tables.values() if tp.archetype == "dimension")
+            summaries = sum(1 for tp in tables.values() if (tp.summary or "").strip())
+            _logger.info(
+                "classify: total=%d fact=%d dimension=%d summaries=%d",
+                total,
+                fact,
+                dimension,
+                summaries,
+            )
+        except Exception:  # noqa: BLE001 - observability-only
+            _logger.debug("classification heartbeat logging failed", exc_info=True)
+
         # Step 7: Subject area descriptions
         subject_areas = self._build_subject_area_descriptions(tables)
 
@@ -292,14 +358,18 @@ class SchemaExplorer:
 
     # ---- internals ---------------------------------------------------------
 
-    def _sample_and_profile_tables(self, tables: dict[str, TableProfile]) -> None:
+    def _sample_and_profile_tables(self, tables: dict[str, TableProfile]) -> dict[str, int]:
         """Sample and profile tables using a single streaming connection.
 
-        Keeps logic out of build_index to reduce branching and improve readability.
+        Returns a mapping of ``"schema.table"`` to the number of columns
+        actually selected for sampling (after LOB filtering and column cap).
+        Keeps logic out of ``build_index`` to reduce branching and improve readability.
         """
+        coverage: dict[str, int] = {}
         with self._engine.connect() as _conn:
             streaming_conn = _conn.execution_options(stream_results=True)
             for table_profile in list(tables.values()):
+                preview_cols = 12  # limit for DEBUG column name preview
                 columns_ordered = table_profile.columns
                 if self.config.max_sampled_columns:
                     columns_ordered = columns_ordered[: self.config.max_sampled_columns]
@@ -312,6 +382,23 @@ class SchemaExplorer:
                     )
 
                 column_names = [col.name for col in columns_ordered if not _is_lob(col.type)]
+                lob_skipped = max(0, len(columns_ordered) - len(column_names))
+
+                # DEBUG visibility per table
+                try:
+                    preview = ", ".join(column_names[:preview_cols])
+                    if len(column_names) > preview_cols:
+                        preview += ", …"
+                    _logger.debug(
+                        "sampling table %s.%s: cols=%d [%s] lob_skipped=%d",
+                        table_profile.schema,
+                        table_profile.name,
+                        len(column_names),
+                        preview,
+                        lob_skipped,
+                    )
+                except Exception:  # noqa: BLE001 - observability-only
+                    _logger.debug("sampling table preview failed", exc_info=True)
 
                 sample_data = self._sampler.sample_table(
                     table_profile.schema, table_profile.name, column_names, conn=streaming_conn
@@ -322,6 +409,17 @@ class SchemaExplorer:
                     value_constraint_threshold=self.config.value_constraint_threshold,
                 )
                 tables[f"{updated.schema}.{updated.name}"] = updated
+                coverage[f"{updated.schema}.{updated.name}"] = len(column_names)
+
+                # DEBUG post-profile heartbeat per table
+                _logger.debug(
+                    "profiled %s.%s: rows_sampled=%d",
+                    updated.schema,
+                    updated.name,
+                    int(updated.n_rows_sampled or 0),
+                )
+
+        return coverage
 
     def update_index_if_changed(self) -> bool:
         """Update schema index if the database schema has changed.

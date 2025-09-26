@@ -299,8 +299,11 @@ class SchemaServiceManager:
         with engine.connect() as conn:
             conn.execute(sa.text("SELECT 1"))
 
-        # Ensure global explorer is available; defer embedder until first use
+        # Ensure global explorer is available; build embedder once for reuse
         self._ensure_global_explorer(engine)
+        # Build a single, reusable embedder so QueryEngine does not lazily
+        # initialize a new one on each rebuild (avoids duplicate init logs).
+        self._ensure_global_embedder()
 
         # Create SchemaService instance with the global explorer and embedder
         global_explorer = type(self).GLOBAL_EXPLORER
@@ -318,8 +321,9 @@ class SchemaServiceManager:
             try:
                 svc = self._schema_service
                 if svc is not None:
+                    self._logger.info("Priming QueryEngine caches (phase=init)")
                     svc.prime_query_resources()
-                    self._logger.info("QueryEngine caches primed after initialization")
+                    self._logger.info("QueryEngine caches primed (phase=init)")
             except (RuntimeError, ValueError, OSError):
                 # Best-effort warmup; log and continue
                 self._logger.debug("QueryEngine warmup skipped or failed", exc_info=True)
@@ -348,8 +352,9 @@ class SchemaServiceManager:
                 try:
                     svc = self._schema_service
                     if svc is not None:
+                        self._logger.info("Priming QueryEngine caches (phase=enrichment)")
                         svc.prime_query_resources()
-                        self._logger.info("QueryEngine caches re-primed after enrichment")
+                        self._logger.info("QueryEngine caches primed (phase=enrichment)")
                 except (RuntimeError, ValueError, OSError):
                     self._logger.debug(
                         "QueryEngine re-prime after enrichment skipped or failed", exc_info=True

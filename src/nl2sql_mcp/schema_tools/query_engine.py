@@ -190,6 +190,14 @@ class QueryEngine:
         self.table_index = SemanticIndex()
         self.table_index.build(labels, embeddings)
 
+        # Minimal heartbeat: table embeddings stats
+        try:
+            count = len(labels)
+            dim = int(embeddings.shape[1]) if embeddings.size > 0 else 0
+            _logger.info("embeddings.tables: count=%d dim=%d", count, dim)
+        except Exception:  # noqa: BLE001 - observability-only
+            _logger.debug("table embeddings heartbeat logging failed", exc_info=True)
+
     def _build_column_embeddings(self) -> None:
         """Build column-level embeddings."""
         if not self.embedder:
@@ -229,3 +237,11 @@ class QueryEngine:
         if len(labels) > 0:
             self.column_index = SemanticIndex()
             self.column_index.build(labels, embeddings)
+
+        # Minimal heartbeat: column embeddings stats (only when index/vecs prepared)
+        try:
+            count = len(labels)
+            dim = int(embeddings.shape[1]) if embeddings.size > 0 else 0
+            _logger.info("embeddings.columns: count=%d dim=%d", count, dim)
+        except Exception:  # noqa: BLE001 - observability-only
+            _logger.debug("column embeddings heartbeat logging failed", exc_info=True)
