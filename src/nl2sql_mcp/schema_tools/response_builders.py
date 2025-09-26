@@ -168,9 +168,7 @@ class QuerySchemaResultBuilder:
                         join_tbl = step.to_table
                         # Default to LEFT JOIN for safety
                         on_parts = [f"{p.left} = {p.right}" for p in step.on[:2]] or ["1=1"]
-                        lines.append(
-                            f"LEFT JOIN {join_tbl} ON " + " AND ".join(on_parts)
-                        )
+                        lines.append(f"LEFT JOIN {join_tbl} ON " + " AND ".join(on_parts))
 
                 draft_sql = "\n".join(lines)
                 assumptions.append("Used LEFT JOINs for safety where relationships exist.")

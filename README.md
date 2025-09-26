@@ -352,6 +352,8 @@ NL2SQL_MCP_ROW_LIMIT=1000           # Max rows returned
 NL2SQL_MCP_MAX_CELL_CHARS=500       # Truncate long text
 NL2SQL_MCP_SAMPLE_TIMEOUT=5         # Sampling timeout (seconds)
 NL2SQL_MCP_MAX_COLS_FOR_EMBEDDINGS=20  # Column embedding limit
+NL2SQL_MCP_REFLECT_TIMEOUT=15       # Reflection timeout per statement (seconds)
+NL2SQL_MCP_ENABLE_LIGHTWEIGHT_NER=1 # Toggle NER enrichment during profiling (0 disables)
 ```
 
 ## 🧪 Testing and Development

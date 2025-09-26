@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import Final
 
 import pytest
@@ -9,10 +8,7 @@ from nl2sql_mcp.schema_tools.lightweight_ner import Entity, LightweightNER
 
 
 def _has_entity(ents: list[Entity], *, label: str, canonical: str | None = None) -> bool:
-    for e in ents:
-        if e.label == label and (canonical is None or e.canonical == canonical):
-            return True
-    return False
+    return any(e.label == label and (canonical is None or e.canonical == canonical) for e in ents)
 
 
 @pytest.fixture(scope="module")
@@ -55,4 +51,3 @@ def test_extract_labels_uppercase(ner: LightweightNER) -> None:
     labels = ner.extract_labels("euro in United States, California, America/New_York")
     expected: Final[set[str]] = {"CURRENCY", "COUNTRY", "SUBDIVISION", "TIMEZONE"}
     assert expected.issubset(set(labels))
-

@@ -75,6 +75,7 @@ class SchemaExplorer:
             config.exclude_schemas,
             fast_startup=config.fast_startup,
             max_tables_at_startup=config.max_tables_at_startup,
+            reflect_timeout_sec=config.reflect_timeout_sec,
         )
         self._sampler = Sampler(self._engine, config.per_table_rows, config.sample_timeout)
         self._profiler = Profiler()

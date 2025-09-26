@@ -253,6 +253,8 @@ class SchemaExplorerConfig:
     fast_startup: bool = False
     max_tables_at_startup: int | None = None
     max_sampled_columns: int = 20
+    # Reflection timeout (seconds) applied session-locally during metadata reflection
+    reflect_timeout_sec: int = Constants.DEFAULT_TIMEOUT_SEC
     # Retrieval/expansion tuning
     strict_archive_exclude: bool = True
     lexicon_top_n: int = 16

@@ -15,17 +15,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+from threading import Lock
 from typing import Any, Literal
 import unicodedata
 from zoneinfo import available_timezones
 
-from babel.numbers import (  # type: ignore[reportMissingTypeStubs]
-    get_currency_name,
-    get_currency_symbol,
-    list_currencies,
-)
 from fastmcp.utilities.logging import get_logger
-import pycountry  # type: ignore[reportMissingTypeStubs]
 
 # Logger
 _logger = get_logger("lightweight_ner")
@@ -91,15 +86,34 @@ class LightweightNER:
             locale: CLDR locale code for currency names/symbols (default: "en").
         """
         self.locale = locale
-        self._gazetteers = self._build_gazetteers()
+        # Lazily built gazetteers to avoid heavy startup
+        self._gazetteers: dict[Label, dict[str, str]] | None = None
         self._patterns = self._compile_patterns()
+        self._build_lock: Lock = Lock()
 
-    def _build_gazetteers(self) -> dict[Label, dict[str, str]]:
+    def _build_gazetteers(self) -> dict[Label, dict[str, str]]:  # noqa: PLR0912
         """Build authoritative gazetteers mapping term -> canonical code.
 
         Returns:
             Mapping from label to term dictionary (term -> canonical value).
         """
+        # Defer heavy imports until first build
+        try:
+            import pycountry  # type: ignore[reportMissingTypeStubs]  # noqa: PLC0415
+        except Exception as e:  # noqa: BLE001
+            _logger.debug("pycountry import failed: %s", e)
+            pycountry = None  # type: ignore[assignment]
+
+        try:
+            from babel.numbers import (  # type: ignore[reportMissingTypeStubs]  # noqa: PLC0415
+                get_currency_name,
+                get_currency_symbol,
+                list_currencies,
+            )
+        except Exception as e:  # noqa: BLE001
+            _logger.debug("Babel import failed: %s", e)
+            get_currency_name = get_currency_symbol = list_currencies = None  # type: ignore[assignment]
+
         gaz: dict[Label, dict[str, str]] = {
             "COUNTRY": {},
             "SUBDIVISION": {},
@@ -112,59 +126,68 @@ class LightweightNER:
             "LOC": {},
         }
 
-        # Country terms from ISO-3166
-        for country in pycountry.countries:  # type: ignore[assignment]
-            alpha2 = getattr(country, "alpha_2", None)
-            if not isinstance(alpha2, str):
-                continue
+        # Country terms from ISO-3166 (optional)
+        if pycountry is not None:  # type: ignore[truthy-function]
+            for country in pycountry.countries:  # type: ignore[assignment]
+                alpha2 = getattr(country, "alpha_2", None)
+                if not isinstance(alpha2, str):
+                    continue
 
-            names: list[str] = [
-                str(getattr(country, attr))
-                for attr in ("name", "official_name", "common_name")
-                if hasattr(country, attr)
-            ]
-            # Include alpha-2 and alpha-3 codes as names
-            codes = [
-                str(getattr(country, a)) for a in ("alpha_2", "alpha_3") if hasattr(country, a)
-            ]
-            names.extend(codes)
+                names: list[str] = [
+                    str(getattr(country, attr))
+                    for attr in ("name", "official_name", "common_name")
+                    if hasattr(country, attr)
+                ]
+                # Include alpha-2 and alpha-3 codes as names
+                codes = [
+                    str(getattr(country, a)) for a in ("alpha_2", "alpha_3") if hasattr(country, a)
+                ]
+                names.extend(codes)
 
-            for n in names:
-                term = _normalize(n)
+                for n in names:
+                    term = _normalize(n)
+                    if term:
+                        gaz["COUNTRY"][term] = alpha2
+
+        # Subdivision terms from ISO-3166-2 (optional)
+        if pycountry is not None and hasattr(pycountry, "subdivisions"):
+            for subdiv in pycountry.subdivisions:  # type: ignore[attr-defined]
+                code = getattr(subdiv, "code", None)
+                if not code:
+                    continue
+                term = _normalize(getattr(subdiv, "name", code))
                 if term:
-                    gaz["COUNTRY"][term] = alpha2
+                    gaz["SUBDIVISION"][term] = code
+                # Also add code itself normalized (e.g., US-CA)
+                gaz["SUBDIVISION"][_normalize(code)] = code
 
-        # Subdivision terms from ISO-3166-2
-        for subdiv in pycountry.subdivisions:  # type: ignore[attr-defined]
-            code = getattr(subdiv, "code", None)
-            if not code:
-                continue
-            term = _normalize(getattr(subdiv, "name", code))
-            if term:
-                gaz["SUBDIVISION"][term] = code
-            # Also add code itself normalized (e.g., US-CA)
-            gaz["SUBDIVISION"][_normalize(code)] = code
-
-        # Currencies (ISO-4217 via Babel)
-        for code in list_currencies(locale=self.locale):
-            code_str = str(code)
-            gaz["CURRENCY"][_normalize(code_str)] = code_str
-            # Name and symbol (if available)
-            name = get_currency_name(code_str, locale=self.locale)
-            term_name = _normalize(name)
-            if term_name:
-                gaz["CURRENCY"][term_name] = code_str
-            sym = get_currency_symbol(code_str, locale=self.locale)
-            # Symbols are non-alnum; store as-is in a separate key form
-            # We'll detect them via regex rather than gazetteer tokens.
-            if sym and sym in {"$", "€", "£", "¥", "₩", "₹", "₽", "₺", "₫", "₦"}:
-                gaz["CURRENCY"][sym] = code_str
+        # Currencies (ISO-4217 via Babel) (optional)
+        if "list_currencies" in locals() and list_currencies is not None:  # type: ignore[name-defined]
+            for code in list_currencies(locale=self.locale):  # type: ignore[name-defined]
+                code_str = str(code)
+                gaz["CURRENCY"][_normalize(code_str)] = code_str
+                if "get_currency_name" in locals() and get_currency_name is not None:  # type: ignore[name-defined]
+                    name = get_currency_name(code_str, locale=self.locale)  # type: ignore[name-defined]
+                    term_name = _normalize(name)
+                    if term_name:
+                        gaz["CURRENCY"][term_name] = code_str
+                if "get_currency_symbol" in locals() and get_currency_symbol is not None:  # type: ignore[name-defined]
+                    sym = get_currency_symbol(code_str, locale=self.locale)  # type: ignore[name-defined]
+                    if sym and sym in {"$", "€", "£", "¥", "₩", "₹", "₽", "₺", "₫", "₦"}:
+                        gaz["CURRENCY"][sym] = code_str
 
         # Time zones (IANA TZ IDs)
         for tz in sorted(available_timezones()):
             gaz["TIMEZONE"][_normalize(tz)] = tz
 
         return gaz
+
+    def _ensure_gazetteers(self) -> None:
+        """Ensure gazetteers are built exactly once (lazy)."""
+        if self._gazetteers is None:
+            with self._build_lock:
+                if self._gazetteers is None:
+                    self._gazetteers = self._build_gazetteers()
 
     def _compile_patterns(self) -> dict[Label, list[re.Pattern[str]]]:
         """Compile regex patterns for PERSON/ORG/GPE/LOC and money symbols."""
@@ -240,16 +263,17 @@ class LightweightNER:
         candidates: list[str] = []
         candidates.extend(raw_tokens)
         candidates.extend(
-            "_".join(raw_tokens[i : i + n])
-            for n in (2, 3)
-            for i in range(len(raw_tokens) - n + 1)
+            "_".join(raw_tokens[i : i + n]) for n in (2, 3) for i in range(len(raw_tokens) - n + 1)
         )
         # Also include the full normalized identifier
         candidates.append(norm)
 
         results: list[Entity] = []
 
-        # Gazetteer lookups
+        # Gazetteer lookups (lazy build)
+        self._ensure_gazetteers()
+        if self._gazetteers is None:
+            return []
         for label, terms in self._gazetteers.items():
             if not terms:
                 continue

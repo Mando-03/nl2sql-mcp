@@ -91,6 +91,15 @@ class ConfigService:
             "NL2SQL_MCP_EMBEDDING_MODEL",
             Constants.DEFAULT_EMBEDDING_MODEL,
         )
+        # Reflection timeout: default to sample_timeout unless overridden
+        reflect_timeout_env = os.getenv("NL2SQL_MCP_REFLECT_TIMEOUT")
+        try:
+            reflect_timeout_sec = (
+                int(reflect_timeout_env) if reflect_timeout_env is not None else 15
+            )
+        except ValueError:
+            reflect_timeout_sec = 15
+
         return SchemaExplorerConfig(
             per_table_rows=50,  # Enough for good samples
             sample_timeout=15,
@@ -105,6 +114,7 @@ class ConfigService:
             fast_startup=True,
             max_tables_at_startup=300,
             max_sampled_columns=15,
+            reflect_timeout_sec=reflect_timeout_sec,
             # Retrieval/expansion tuning defaults
             strict_archive_exclude=True,
             lexicon_top_n=16,

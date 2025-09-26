@@ -11,6 +11,7 @@ Classes:
 
 from __future__ import annotations
 
+import os
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -29,8 +30,12 @@ MIN_UNIQUE_COUNT_FOR_METRIC = 10
 # Logger
 _logger = get_logger("schema_explorer.profiling")
 
-# Lightweight NER backed by authoritative sources
-_ner_instance = LightweightNER()
+# NER enable toggle via environment
+_NER_ENABLED = os.getenv("NL2SQL_MCP_ENABLE_LIGHTWEIGHT_NER", "1").strip() not in {
+    "0",
+    "false",
+    "False",
+}
 
 
 class Profiler:
@@ -63,7 +68,9 @@ class Profiler:
 
     def __init__(self) -> None:
         """Initialize the profiler with lightweight NER capabilities."""
-        self.ner = _ner_instance
+        # Defer NER construction to first use and allow disabling via env
+        self._ner_enabled: bool = _NER_ENABLED
+        self.ner: LightweightNER | None = None
 
     def _is_numeric_type(self, sqlalchemy_type: str) -> bool:
         """Check if SQLAlchemy type string indicates a numeric type.
@@ -89,7 +96,7 @@ class Profiler:
         type_lower = sqlalchemy_type.lower()
         return ("char" in type_lower) or ("text" in type_lower) or ("clob" in type_lower)
 
-    def infer_col_role(
+    def infer_col_role(  # noqa: PLR0912
         self,
         name: str,
         sqlalchemy_type: str,
@@ -189,13 +196,16 @@ class Profiler:
                 semantic_tags.append("unit:%")
                 patterns.append("percent-like")
 
-        # Named entity recognition using new LightweightNER
-        try:
-            ents = self.ner.analyze(name)
-            ner_labels = [e.label.lower() for e in ents]
-            semantic_tags.extend(ner_labels)
-        except Exception as e:  # noqa: BLE001
-            _logger.debug("Lightweight NER failed for column %s: %s", name, e)
+        # Named entity recognition using new LightweightNER (lazy & optional)
+        if self._ner_enabled:
+            try:
+                if self.ner is None:
+                    self.ner = LightweightNER()
+                ents = self.ner.analyze(name)
+                ner_labels = [e.label.lower() for e in ents]
+                semantic_tags.extend(ner_labels)
+            except Exception as e:  # noqa: BLE001
+                _logger.debug("Lightweight NER failed for column %s: %s", name, e)
 
         # Remove duplicates while preserving order
         semantic_tags = list(dict.fromkeys(semantic_tags))

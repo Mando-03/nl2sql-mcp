@@ -15,7 +15,7 @@ from typing import Any
 
 from fastmcp.utilities.logging import get_logger
 import sqlalchemy as sa
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.engine.reflection import Inspector
 
 from .exceptions import ReflectionError
@@ -47,6 +47,7 @@ class ReflectionAdapter:
         *,
         fast_startup: bool = False,
         max_tables_at_startup: int | None = None,
+        reflect_timeout_sec: int | None = None,
     ) -> None:
         """Initialize the reflection adapter.
 
@@ -61,8 +62,9 @@ class ReflectionAdapter:
         self.exclude_schemas = exclude_schemas
         self.fast_startup = fast_startup
         self.max_tables_at_startup = max_tables_at_startup
+        self._reflect_timeout_sec = reflect_timeout_sec
 
-    def list_schemas(self) -> list[str]:
+    def list_schemas(self, *, inspector: Inspector | None = None) -> list[str]:
         """List database schemas with filtering applied.
 
         Retrieves all available schema names from the database and applies
@@ -75,8 +77,9 @@ class ReflectionAdapter:
         Raises:
             ReflectionError: If schema listing fails critically
         """
+        insp = inspector or self.inspector
         try:
-            schemas = self.inspector.get_schema_names()
+            schemas = insp.get_schema_names()
         except Exception as e:  # noqa: BLE001 - Fallback on any database error
             _logger.warning("Could not list schemas, falling back to 'public': %s", e)
             schemas = ["public"]
@@ -139,7 +142,13 @@ class ReflectionAdapter:
         get_comments = False
 
         try:
-            schemas_to_process = self.list_schemas()
+            # Use a dedicated connection to apply per-session timeouts
+            with self.engine.connect() as conn:
+                self._apply_reflection_timeout(conn)
+                local_insp: Inspector = sa.inspect(conn)
+
+                _logger.info("Listing schemas for reflection…")
+                schemas_to_process = self.list_schemas(inspector=local_insp)
         except Exception as e:
             error_msg = f"Failed to list database schemas: {e}"
             raise ReflectionError(error_msg) from e
@@ -147,82 +156,93 @@ class ReflectionAdapter:
         processed_tables = 0
         max_tables = self.max_tables_at_startup if self.max_tables_at_startup else None
 
-        for schema in schemas_to_process:
-            _logger.debug("Reflecting schema: %s", schema)
+        _logger.info("Found %d candidate schemas", len(schemas_to_process))
 
-            try:
-                tables = self.inspector.get_table_names(schema=schema)
-            except Exception as e:  # noqa: BLE001 - Skip schema on any database error
-                _logger.warning("Cannot list tables for schema %s: %s", schema, e)
-                continue
+        # Re-open a connection for the heavy loop to ensure timeout remains applied
+        with self.engine.connect() as conn:
+            self._apply_reflection_timeout(conn)
+            local_insp = sa.inspect(conn)
 
-            payload["schemas"][schema] = {"tables": {}}
+            for schema in schemas_to_process:
+                _logger.info("Fetching tables for schema: %s", schema)
 
-            for table in tables:
-                _logger.debug("Reflecting table: %s.%s", schema, table)
-
-                # Respect global startup cap on number of tables reflected
-                if max_tables is not None and processed_tables >= max_tables:
-                    _logger.info(
-                        "Reached reflection cap (max_tables_at_startup=%s); stopping early",
-                        max_tables,
-                    )
-                    return payload
-
-                # Get column information
                 try:
-                    columns_metadata = self.inspector.get_columns(table, schema=schema)
-                except Exception as e:  # noqa: BLE001 - Skip table on any database error
-                    _logger.warning("Cannot get columns for %s.%s: %s", schema, table, e)
+                    tables = local_insp.get_table_names(schema=schema)
+                except Exception as e:  # noqa: BLE001 - Skip schema on any database error
+                    _logger.warning("Cannot list tables for schema %s: %s", schema, e)
                     continue
 
-                # Get primary key constraint
-                try:
-                    pk_constraint = self.inspector.get_pk_constraint(table, schema=schema)
-                    primary_key_columns = pk_constraint.get("constrained_columns", []) or []
-                except Exception as e:  # noqa: BLE001 - Continue without PK info
-                    _logger.debug("Cannot get PK for %s.%s: %s", schema, table, e)
-                    primary_key_columns = []
+                _logger.info("%s: %d tables", schema, len(tables))
+                payload["schemas"][schema] = {"tables": {}}
 
-                # Get foreign key constraints (skip on fast startup for speed)
-                foreign_keys: list[tuple[str, str, str]] = []
-                if not self.fast_startup:
-                    foreign_keys = self._get_foreign_keys(schema, table)
+                for table in tables:
+                    _logger.debug("Reflecting table: %s.%s", schema, table)
 
-                # Get table comment if enabled
-                table_comment = None
-                if get_comments:
+                    # Respect global startup cap on number of tables reflected
+                    if max_tables is not None and processed_tables >= max_tables:
+                        _logger.info(
+                            "Reached reflection cap (max_tables_at_startup=%s); stopping early",
+                            max_tables,
+                        )
+                        return payload
+
+                    # Get column information
                     try:
-                        comment_info = self.inspector.get_table_comment(table, schema=schema)
-                        table_comment = comment_info.get("text")
-                    except Exception as e:  # noqa: BLE001 - Continue without comment
-                        _logger.debug("Cannot get comment for %s.%s: %s", schema, table, e)
+                        columns_metadata = local_insp.get_columns(table, schema=schema)
+                    except Exception as e:  # noqa: BLE001 - Skip table on any database error
+                        _logger.warning("Cannot get columns for %s.%s: %s", schema, table, e)
+                        continue
 
-                # Build table metadata
-                payload["schemas"][schema]["tables"][table] = {
-                    "columns": [
-                        {
-                            "name": col["name"],
-                            "type": str(col["type"]),
-                            "nullable": col.get("nullable", True),
-                            "comment": col.get("comment"),
-                        }
-                        for col in columns_metadata
-                    ],
-                    "pk": primary_key_columns,
-                    "fks": foreign_keys,
-                    "comment": table_comment,
-                }
+                    # Get primary key constraint
+                    try:
+                        pk_constraint = local_insp.get_pk_constraint(table, schema=schema)
+                        primary_key_columns = pk_constraint.get("constrained_columns", []) or []
+                    except Exception as e:  # noqa: BLE001 - Continue without PK info
+                        _logger.debug("Cannot get PK for %s.%s: %s", schema, table, e)
+                        primary_key_columns = []
 
-                processed_tables += 1
+                    # Get foreign key constraints (skip on fast startup for speed)
+                    foreign_keys: list[tuple[str, str, str]] = []
+                    if not self.fast_startup:
+                        foreign_keys = self._get_foreign_keys(schema, table, inspector=local_insp)
+
+                    # Get table comment if enabled
+                    table_comment = None
+                    if get_comments:
+                        try:
+                            comment_info = local_insp.get_table_comment(table, schema=schema)
+                            table_comment = comment_info.get("text")
+                        except Exception as e:  # noqa: BLE001 - Continue without comment
+                            _logger.debug("Cannot get comment for %s.%s: %s", schema, table, e)
+
+                    # Build table metadata
+                    payload["schemas"][schema]["tables"][table] = {
+                        "columns": [
+                            {
+                                "name": col["name"],
+                                "type": str(col["type"]),
+                                "nullable": col.get("nullable", True),
+                                "comment": col.get("comment"),
+                            }
+                            for col in columns_metadata
+                        ],
+                        "pk": primary_key_columns,
+                        "fks": foreign_keys,
+                        "comment": table_comment,
+                    }
+
+                    processed_tables += 1
 
         return payload
 
     # ---- internals ---------------------------------------------------------
-    def _get_foreign_keys(self, schema: str, table: str) -> list[tuple[str, str, str]]:
+    def _get_foreign_keys(
+        self, schema: str, table: str, *, inspector: Inspector | None = None
+    ) -> list[tuple[str, str, str]]:
         """Fetch foreign key relationships for a table with robust fallbacks."""
+        insp = inspector or self.inspector
         try:
-            fk_constraints = self.inspector.get_foreign_keys(table, schema=schema)
+            fk_constraints = insp.get_foreign_keys(table, schema=schema)
         except Exception as e:  # noqa: BLE001 - Continue without FK info
             _logger.debug("Cannot get FKs for %s.%s: %s", schema, table, e)
             return []
@@ -236,3 +256,28 @@ class ReflectionAdapter:
             for local_col, ref_col in zip(constrained_cols, referred_cols, strict=False):
                 fks.append((local_col, f"{ref_schema}.{ref_table}", ref_col))
         return fks
+
+    def _apply_reflection_timeout(self, conn: Connection) -> None:
+        """Apply a per-connection timeout suitable for metadata reflection.
+
+        Best-effort, dialect-specific:
+        - PostgreSQL: SET statement_timeout = <ms>
+        - MySQL:      SET SESSION MAX_EXECUTION_TIME = <ms>
+        - SQL Server: SET LOCK_TIMEOUT <ms>
+        """
+        timeout_sec = self._reflect_timeout_sec
+        if not timeout_sec or timeout_sec <= 0:
+            return
+        try:
+            dialect = self.engine.dialect.name
+            ms = max(1, int(timeout_sec * 1000))
+            if dialect == "postgresql":
+                conn.execute(sa.text("SET statement_timeout = :ms"), {"ms": ms})
+            elif dialect in {"mysql", "mariadb"}:
+                # MySQL 5.7+ / MariaDB: MAX_EXECUTION_TIME (may be ignored if unsupported)
+                conn.execute(sa.text("SET SESSION MAX_EXECUTION_TIME = :ms"), {"ms": ms})
+            elif dialect == "mssql":
+                # Reduces lock wait time; not a full statement timeout but helps avoid hangs
+                conn.execute(sa.text(f"SET LOCK_TIMEOUT {ms}"))
+        except Exception as e:  # noqa: BLE001 - best-effort guard
+            _logger.debug("Could not apply reflection timeout: %s", e)
