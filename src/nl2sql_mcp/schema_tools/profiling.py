@@ -18,7 +18,7 @@ from fastmcp.utilities.logging import get_logger
 import pandas as pd
 
 from .constants import Constants
-from .lightweight_ner import get_lightweight_ner
+from .lightweight_ner import LightweightNER
 from .utils import normalize_identifier
 
 if TYPE_CHECKING:
@@ -29,9 +29,8 @@ MIN_UNIQUE_COUNT_FOR_METRIC = 10
 # Logger
 _logger = get_logger("schema_explorer.profiling")
 
-# Lightweight NER using regex + gazetteer approach
-_has_lightweight_ner: bool = True
-_nlp_instance = get_lightweight_ner()
+# Lightweight NER backed by authoritative sources
+_ner_instance = LightweightNER()
 
 
 class Profiler:
@@ -64,7 +63,7 @@ class Profiler:
 
     def __init__(self) -> None:
         """Initialize the profiler with lightweight NER capabilities."""
-        self.nlp = _nlp_instance
+        self.ner = _ner_instance
 
     def _is_numeric_type(self, sqlalchemy_type: str) -> bool:
         """Check if SQLAlchemy type string indicates a numeric type.
@@ -190,18 +189,13 @@ class Profiler:
                 semantic_tags.append("unit:%")
                 patterns.append("percent-like")
 
-        # Named entity recognition using lightweight NER
-        if self.nlp:
-            try:
-                doc = self.nlp(name)
-                ner_labels = [
-                    entity.label_.lower()
-                    for entity in doc.ents
-                    if entity.label_ in ("PERSON", "ORG", "GPE", "LOC")
-                ]
-                semantic_tags.extend(ner_labels)
-            except Exception as e:  # noqa: BLE001
-                _logger.debug("Lightweight NER failed for column %s: %s", name, e)
+        # Named entity recognition using new LightweightNER
+        try:
+            ents = self.ner.analyze(name)
+            ner_labels = [e.label.lower() for e in ents]
+            semantic_tags.extend(ner_labels)
+        except Exception as e:  # noqa: BLE001
+            _logger.debug("Lightweight NER failed for column %s: %s", name, e)
 
         # Remove duplicates while preserving order
         semantic_tags = list(dict.fromkeys(semantic_tags))
