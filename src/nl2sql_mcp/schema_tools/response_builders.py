@@ -168,7 +168,9 @@ class QuerySchemaResultBuilder:
                         join_tbl = step.to_table
                         # Default to LEFT JOIN for safety
                         on_parts = [f"{p.left} = {p.right}" for p in step.on[:2]] or ["1=1"]
-                        lines.append(f"LEFT JOIN {join_tbl} ON " + " AND ".join(on_parts))
+                        lines.append(
+                            f"LEFT JOIN {join_tbl} ON " + " AND ".join(on_parts)
+                        )
 
                 draft_sql = "\n".join(lines)
                 assumptions.append("Used LEFT JOINs for safety where relationships exist.")
@@ -182,7 +184,7 @@ class QuerySchemaResultBuilder:
             is_count_intent = bool(count_signals & qtokens)
             anchor = main_table or (selected_tables[0] if selected_tables else None)
             if is_count_intent and anchor:
-                draft_sql = f"SELECT COUNT(*) AS count FROM {anchor}"
+                draft_sql = f"SELECT COUNT(*) AS count FROM {anchor}"  # noqa: S608
                 # For single-table COUNT queries, no need for further clarification.
                 clarifications = []
 

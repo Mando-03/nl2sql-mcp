@@ -6,7 +6,7 @@ from nl2sql_mcp.schema_tools.utils import is_archive_label
 
 
 @pytest.mark.parametrize(
-    "label,expected",
+    ("label", "expected"),
     [
         ("dbo.Orders_Archive", True),
         ("dbo.Cities_ARCHIVED", True),
@@ -29,5 +29,5 @@ from nl2sql_mcp.schema_tools.utils import is_archive_label
         ("dbo.BackOrder", False),  # 'back' is not 'backup/bak'
     ],
 )
-def test_is_archive_label(label: str, expected: bool) -> None:
+def test_is_archive_label(label: str, expected: bool) -> None:  # noqa: FBT001
     assert is_archive_label(label) is expected

@@ -44,7 +44,7 @@ class RetrievalEngine:
         lexical_cache: Pre-computed lexical weights for tables
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         schema_card: SchemaCard,
         embedder: Embedder | None = None,
