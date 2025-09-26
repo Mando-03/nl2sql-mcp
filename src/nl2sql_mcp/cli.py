@@ -8,26 +8,12 @@ If invoked without any command-line arguments, it defaults to executing the
 
 from __future__ import annotations
 
-import sys
-
-from fastmcp.cli.cli import app
+from nl2sql_mcp.server import mcp
 
 
 def main() -> None:
-    """Start the nl2sql-mcp FastMCP server via CLI.
-
-    Behavior:
-    - When invoked with no additional command-line arguments (i.e., only the
-      program name is present in ``sys.argv``), call the FastMCP CLI with a
-      default of ``run`` to start the server immediately.
-    - Otherwise, defer to the arguments provided by the user.
-    """
-    if len(sys.argv) == 1:
-        # No CLI arguments provided; default to the `run` subcommand.
-        app(tokens=["run"])  # type: ignore[call-arg]
-    else:
-        # Use the actual command-line arguments as provided.
-        app()
+    """Start the nl2sql-mcp FastMCP server via CLI."""
+    mcp.run()
 
 
 if __name__ == "__main__":
