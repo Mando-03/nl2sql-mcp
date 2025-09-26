@@ -89,6 +89,9 @@ uv run nl2sql-mcp
 
 # Or run directly
 uv run python -m nl2sql_mcp.server
+
+# Or run using uvx
+uvx --from git+https://github.com/jb3cloud/nl2sql-mcp nl2sql-mcp
 ```
 
 ## 🛠️ Makefile Workflow
@@ -113,6 +116,12 @@ make clean      # Remove caches and build artifacts
 Deployment helpers for Azure Container Apps are also provided:
 
 ```bash
+# Create docker container
+make docker
+
+# Run docker container
+make docker-run
+
 # Verify Azure CLI login and (optionally) set subscription
 make preflight AZ_SUBSCRIPTION="00000000-0000-0000-0000-000000000000"
 
