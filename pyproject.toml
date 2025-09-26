@@ -39,7 +39,7 @@ dev = [
 ]
 
 [project.scripts]
-nl2sql-mcp = "nl2sql_mcp.server:main"
+nl2sql-mcp = "nl2sql_mcp.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/jb3cloud/nl2sql-mcp"
